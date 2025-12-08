@@ -25,3 +25,6 @@ python purchase_system.py
 - sqlite3 (built-in)
 
 ## Screenshots
+![App Screenshot 1](screenshots/app1.png)
+![App Screenshot 2](screenshots/app2.png)
+![App Screenshot 3](screenshots/app3.png)
