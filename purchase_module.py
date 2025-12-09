@@ -612,4 +612,296 @@ class PurchaseModule:
         supplier_dict = {f"{s[1]} (ID: {s[0]})": s[0] for s in suppliers}
         
         supplier_var = tk.StringVar()
-        supplier_combo = ttk.Combobox(dialog)
+        supplier_combo = ttk.Combobox(dialog, textvariable=supplier_var, values=list(supplier_dict.keys()), width=40, state='readonly')
+        supplier_combo.grid(row=1, column=1, padx=10, pady=8)
+        
+        # Step 2: PO and Item (initially disabled)
+        ttk.Label(dialog, text="Step 2: Select PO & Item", font=('Arial', 11, 'bold')).grid(row=2, column=0, columnspan=2, padx=10, pady=(20, 10), sticky='w')
+        
+        ttk.Label(dialog, text="Purchase Order:").grid(row=3, column=0, padx=10, pady=8, sticky='w')
+        po_var = tk.StringVar()
+        po_combo = ttk.Combobox(dialog, textvariable=po_var, width=40, state='disabled')
+        po_combo.grid(row=3, column=1, padx=10, pady=8)
+        
+        ttk.Label(dialog, text="Item:").grid(row=4, column=0, padx=10, pady=8, sticky='w')
+        item_var = tk.StringVar()
+        item_combo = ttk.Combobox(dialog, textvariable=item_var, width=40, state='disabled')
+        item_combo.grid(row=4, column=1, padx=10, pady=8)
+        
+        # Step 3: Receipt Details (initially disabled)
+        ttk.Label(dialog, text="Step 3: Receipt Details", font=('Arial', 11, 'bold')).grid(row=5, column=0, columnspan=2, padx=10, pady=(20, 10), sticky='w')
+        
+        ttk.Label(dialog, text="Invoice Number:").grid(row=6, column=0, padx=10, pady=8, sticky='w')
+        invoice_entry = ttk.Entry(dialog, width=42, state='disabled')
+        invoice_entry.grid(row=6, column=1, padx=10, pady=8)
+        
+        ttk.Label(dialog, text="Receipt Date (YYYY-MM-DD):").grid(row=7, column=0, padx=10, pady=8, sticky='w')
+        date_entry = ttk.Entry(dialog, width=42, state='disabled')
+        date_entry.insert(0, datetime.now().strftime('%Y-%m-%d'))
+        date_entry.grid(row=7, column=1, padx=10, pady=8)
+        
+        ttk.Label(dialog, text="Received Quantity:").grid(row=8, column=0, padx=10, pady=8, sticky='w')
+        recv_qty_entry = ttk.Entry(dialog, width=42, state='disabled')
+        recv_qty_entry.grid(row=8, column=1, padx=10, pady=8)
+        
+        ttk.Label(dialog, text="Accepted Quantity:").grid(row=9, column=0, padx=10, pady=8, sticky='w')
+        accept_qty_entry = ttk.Entry(dialog, width=42, state='disabled')
+        accept_qty_entry.grid(row=9, column=1, padx=10, pady=8)
+        
+        ttk.Label(dialog, text="Rejected Quantity:").grid(row=10, column=0, padx=10, pady=8, sticky='w')
+        reject_qty_entry = ttk.Entry(dialog, width=42, state='disabled')
+        reject_qty_entry.grid(row=10, column=1, padx=10, pady=8)
+        
+        ttk.Label(dialog, text="Notes:").grid(row=11, column=0, padx=10, pady=8, sticky='w')
+        notes_entry = ttk.Entry(dialog, width=42, state='disabled')
+        notes_entry.grid(row=11, column=1, padx=10, pady=8)
+        
+        # Store references
+        po_dict = {}
+        item_dict = {}
+        
+        def on_supplier_selected(event):
+            """When supplier is selected, enable PO selection"""
+            if not supplier_var.get():
+                return
+            
+            supplier_id = supplier_dict[supplier_var.get()]
+            
+            # Get POs for this supplier
+            self.db.execute('''
+                SELECT po_number, order_date, status 
+                FROM Purchase_Orders 
+                WHERE supplier_id = ? 
+                ORDER BY po_number DESC
+            ''', (supplier_id,))
+            
+            pos = self.db.fetchall()
+            if not pos:
+                messagebox.showinfo("Info", "No purchase orders for this supplier")
+                po_combo['state'] = 'disabled'
+                return
+            
+            po_dict.clear()
+            po_list = [f"PO #{po[0]} - {po[1]} ({po[2]})" for po in pos]
+            for i, po in enumerate(pos):
+                po_dict[po_list[i]] = po[0]
+            
+            po_combo['values'] = po_list
+            po_combo['state'] = 'readonly'
+            po_combo.set('')
+            item_combo['state'] = 'disabled'
+            item_combo.set('')
+        
+        def on_po_selected(event):
+            """When PO is selected, enable item selection"""
+            if not po_var.get():
+                return
+            
+            po_number = po_dict[po_var.get()]
+            
+            # Get items for this PO
+            self.db.execute('''
+                SELECT poi.item_id, i.name, poi.quantity
+                FROM Purchase_Order_Items poi
+                JOIN Items i ON poi.item_id = i.item_id
+                WHERE poi.po_number = ?
+            ''', (po_number,))
+            
+            items = self.db.fetchall()
+            if not items:
+                messagebox.showinfo("Info", "No items in this PO")
+                item_combo['state'] = 'disabled'
+                return
+            
+            item_dict.clear()
+            item_list = [f"{item[1]} (Qty: {item[2]})" for item in items]
+            for i, item in enumerate(items):
+                item_dict[item_list[i]] = item[0]
+            
+            item_combo['values'] = item_list
+            item_combo['state'] = 'readonly'
+            item_combo.set('')
+        
+        def on_item_selected(event):
+            """When item is selected, enable all receipt fields"""
+            if item_var.get():
+                invoice_entry['state'] = 'normal'
+                date_entry['state'] = 'normal'
+                recv_qty_entry['state'] = 'normal'
+                accept_qty_entry['state'] = 'normal'
+                reject_qty_entry['state'] = 'normal'
+                notes_entry['state'] = 'normal'
+        
+        def validate_quantities():
+            """Validate quantities"""
+            try:
+                recv = int(recv_qty_entry.get())
+                accept = int(accept_qty_entry.get())
+                reject = int(reject_qty_entry.get())
+                
+                if recv <= 0:
+                    messagebox.showerror("Error", "Received quantity must be positive")
+                    return False
+                
+                if accept < 0 or reject < 0:
+                    messagebox.showerror("Error", "Quantities cannot be negative")
+                    return False
+                
+                if accept + reject != recv:
+                    messagebox.showerror("Error", f"Accepted ({accept}) + Rejected ({reject}) must equal Received ({recv})")
+                    return False
+                
+                return True
+            except ValueError:
+                messagebox.showerror("Error", "Enter valid numbers")
+                return False
+        
+        def save_receipt():
+            """Save the goods receipt"""
+            if not supplier_var.get():
+                messagebox.showerror("Error", "Select a supplier")
+                return
+            if not po_var.get():
+                messagebox.showerror("Error", "Select a purchase order")
+                return
+            if not item_var.get():
+                messagebox.showerror("Error", "Select an item")
+                return
+            if not invoice_entry.get():
+                messagebox.showerror("Error", "Enter invoice number")
+                return
+            
+            if not validate_quantities():
+                return
+            
+            try:
+                supplier_id = supplier_dict[supplier_var.get()]
+                po_number = po_dict[po_var.get()]
+                item_id = item_dict[item_var.get()]
+                invoice_no = invoice_entry.get()
+                receipt_date = date_entry.get()
+                recv_qty = int(recv_qty_entry.get())
+                accept_qty = int(accept_qty_entry.get())
+                reject_qty = int(reject_qty_entry.get())
+                notes = notes_entry.get()
+                
+                # Insert goods receipt
+                self.db.execute('''
+                    INSERT INTO Goods_Receipt 
+                    (po_number, item_id, supplier_id, invoice_number, received_quantity, 
+                     accepted_quantity, rejected_quantity, receipt_date, notes)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (po_number, item_id, supplier_id, invoice_no, recv_qty, accept_qty, reject_qty, receipt_date, notes))
+                
+                # Update inventory with ONLY accepted quantity
+                self.db.execute('''
+                    UPDATE Inventory 
+                    SET quantity_on_hand = quantity_on_hand + ?, 
+                        last_updated = ?
+                    WHERE item_id = ?
+                ''', (accept_qty, datetime.now(), item_id))
+                
+                # Check if all items in the PO have been received
+                self.db.execute('''
+                    SELECT quantity FROM Purchase_Order_Items
+                    WHERE po_number = ? AND item_id = ?
+                ''', (po_number, item_id))
+                ordered_qty = self.db.fetchone()[0]
+                
+                # Get total received quantity for this item in this PO
+                self.db.execute('''
+                    SELECT SUM(received_quantity) FROM Goods_Receipt
+                    WHERE po_number = ? AND item_id = ?
+                ''', (po_number, item_id))
+                total_received = self.db.fetchone()[0] or 0
+                
+                # Check if all items in PO have been fully received
+                self.db.execute('''
+                    SELECT COUNT(*) FROM Purchase_Order_Items poi
+                    WHERE poi.po_number = ?
+                    AND poi.quantity > (
+                        SELECT COALESCE(SUM(gr.received_quantity), 0)
+                        FROM Goods_Receipt gr
+                        WHERE gr.po_number = poi.po_number 
+                        AND gr.item_id = poi.item_id
+                    )
+                ''', (po_number,))
+                
+                unreceived_items = self.db.fetchone()[0]
+                
+                # Update PO status
+                if unreceived_items == 0:
+                    self.db.execute('''
+                        UPDATE Purchase_Orders 
+                        SET status = 'Completed'
+                        WHERE po_number = ?
+                    ''', (po_number,))
+                else:
+                    self.db.execute('''
+                        UPDATE Purchase_Orders 
+                        SET status = 'Partially Received'
+                        WHERE po_number = ?
+                    ''', (po_number,))
+                
+                self.db.commit()
+                
+                msg = f"Goods receipt recorded!\n\n"
+                msg += f"Received: {recv_qty} units\n"
+                msg += f"Accepted: {accept_qty} units (added to inventory)\n"
+                msg += f"Rejected: {reject_qty} units (for return)"
+                
+                messagebox.showinfo("Success", msg)
+                dialog.destroy()
+                self.app.refresh_all_tabs()
+                
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed: {str(e)}")
+        
+        # Bind events
+        supplier_combo.bind('<<ComboboxSelected>>', on_supplier_selected)
+        po_combo.bind('<<ComboboxSelected>>', on_po_selected)
+        item_combo.bind('<<ComboboxSelected>>', on_item_selected)
+        
+        # Save button
+        ttk.Button(dialog, text="Save Receipt", command=save_receipt).grid(row=12, column=0, columnspan=2, pady=20)
+    
+    # ==================== ALERTS TAB ====================
+    
+    def create_alerts_tab(self):
+        """Create alerts/reports tab"""
+        alert_frame = ttk.Frame(self.notebook)
+        self.notebook.add(alert_frame, text="⚠️ Alerts")
+        
+        top_btn_frame = ttk.Frame(alert_frame)
+        top_btn_frame.pack(side='top', fill='x', padx=10, pady=8)
+        
+        ttk.Label(top_btn_frame, text="Low Stock Alerts", font=('Arial', 12, 'bold')).pack(side='left', padx=5)
+        ttk.Button(top_btn_frame, text="🔄 Refresh", command=self.refresh_alerts).pack(side='right', padx=3)
+        
+        columns = ("Item ID", "Item Name", "Current Stock", "Reorder Level", "Action Needed")
+        self.alert_tree = ttk.Treeview(alert_frame, columns=columns, show='headings', height=20)
+        
+        for col in columns:
+            self.alert_tree.heading(col, text=col)
+            self.alert_tree.column(col, width=180)
+        
+        self.alert_tree.pack(fill='both', expand=True, padx=10, pady=(0, 10))
+        
+        self.refresh_alerts()
+    
+    def refresh_alerts(self):
+        """Refresh low stock alerts"""
+        for item in self.alert_tree.get_children():
+            self.alert_tree.delete(item)
+        
+        self.db.execute('''
+            SELECT i.item_id, i.name, inv.quantity_on_hand, inv.reorder_level
+            FROM Items i
+            JOIN Inventory inv ON i.item_id = inv.item_id
+            WHERE inv.quantity_on_hand <= inv.reorder_level
+            ORDER BY (inv.quantity_on_hand - inv.reorder_level)
+        ''')
+        
+        for row in self.db.fetchall():
+            action = f"Order {row[3] * 2 - row[2]} units"
+            self.alert_tree.insert('', 'end', values=row + (action,))

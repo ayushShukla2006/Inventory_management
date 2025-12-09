@@ -607,69 +607,19 @@ class SalesModule:
         self.db.execute("SELECT COUNT(*), COALESCE(SUM(total_amount), 0) FROM Invoices WHERE status = 'Unpaid'")
         unpaid_count, unpaid_amount = self.db.fetchone()
         self.unpaid_invoices_label.config(text=f"Unpaid Invoices: {unpaid_count} (${unpaid_amount:.2f})")
-            
-    def generate_invoice_from_so(self):
-        """Generate invoice from selected SO"""
-        selected = self.so_tree.selection()
-        if not selected:
-            messagebox.showwarning("Warning", "Select a sales order")
-            return
         
-        so_number = self.so_tree.item(selected[0])['values'][0]
-
-        # Fetch SO info
-        self.db.execute("""
-            SELECT customer_id, total_amount 
-            FROM Sales_Orders 
-            WHERE so_number = ?
-        """, (so_number,))
-        so_data = self.db.fetchone()
-
-        if not so_data:
-            messagebox.showerror("Error", "Sales order not found")
-            return
+        # Top selling items
+        for item in self.top_items_tree.get_children():
+            self.top_items_tree.delete(item)
         
-        customer_id, so_total = so_data
-
-        # Check if invoice already exists
-        self.db.execute("""
-            SELECT COUNT(*) FROM Invoices WHERE so_number = ?
-        """, (so_number,))
-        if self.db.fetchone()[0] > 0:
-            messagebox.showwarning("Warning", "Invoice already generated for this SO")
-            return
+        self.db.execute('''
+            SELECT i.name, SUM(soi.quantity) as total_qty, SUM(soi.subtotal) as total_revenue
+            FROM Sales_Order_Items soi
+            JOIN Items i ON soi.item_id = i.item_id
+            GROUP BY i.item_id, i.name
+            ORDER BY total_qty DESC
+            LIMIT 10
+        ''')
         
-        # Create invoice
-        invoice_date = datetime.now().date()
-
-        self.db.execute("""
-            INSERT INTO Invoices (customer_id, so_number, invoice_date, total_amount)
-            VALUES (?, ?, ?, ?)
-        """, (customer_id, so_number, invoice_date, so_total))
-        
-        invoice_id = self.db.lastrowid()
-
-        # Fetch SO items
-        self.db.execute("""
-            SELECT item_id, quantity, unit_price, subtotal
-            FROM Sales_Order_Items
-            WHERE so_number = ?
-        """, (so_number,))
-        
-        so_items = self.db.fetchall()
-
-        # Create invoice items
-        for item_id, qty, price, subtotal in so_items:
-            self.db.execute("""
-                INSERT INTO Invoice_Items (invoice_id, item_id, quantity, unit_price, subtotal)
-                VALUES (?, ?, ?, ?, ?)
-            """, (invoice_id, item_id, qty, price, subtotal))
-
-        # Update order status
-        self.db.execute("""
-            UPDATE Sales_Orders SET status = 'Invoiced' WHERE so_number = ?
-        """, (so_number,))
-
-        self.db.commit()
-        messagebox.showinfo("Success", f"Invoice #{invoice_id} generated for SO #{so_number}")
-        self.refresh_invoices()
+        for row in self.db.fetchall():
+            self.top_items_tree.insert('', 'end', values=(row[0], row[1], f"${row[2]:.2f}"))
