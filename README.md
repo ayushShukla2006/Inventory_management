@@ -42,20 +42,7 @@ It shows how data flows through a system:
 
 ## 📂 Project Structure
 
-inventory-management/
-│
-├── screenshots/
-│ ├── AppFinal1.png
-│ ├── AppFinal2.png
-│ ├── AppFinal3.png
-│ ├── AppFinal4.png
-│ └── AppFinal5.png
-│
-├── main.py
-├── database.py
-├── purchase_module.py
-├── sales_module.py
-└── README.md
+inventory-management/ ├── main.py # Application entry point ├── database.py # Database setup and table definitions ├── purchase_module.py # Purchase orders & goods receipt logic ├── sales_module.py # Sales, customers, invoices & reports ├── screenshots/ │ ├── AppFinal1.png │ ├── AppFinal2.png │ ├── AppFinal3.png │ ├── AppFinal4.png │ └── AppFinal5.png └── README.md
 
 ---
 
