@@ -42,8 +42,19 @@ It shows how data flows through a system:
 
 ## 📂 Project Structure
 
-inventory-management/ ├── main.py # Application entry point ├── database.py # Database setup and table definitions ├── purchase_module.py # Purchase orders & goods receipt logic ├── sales_module.py # Sales, customers, invoices & reports ├── screenshots/ │ ├── AppFinal1.png │ ├── AppFinal2.png │ ├── AppFinal3.png │ ├── AppFinal4.png │ └── AppFinal5.png └── README.md
-
+```text
+inventory-management/
+├── main.py # Application entry point
+├── database.py # Database setup and table definitions
+├── purchase_module.py # Purchase orders & goods receipt logic
+├── sales_module.py # Sales, customers, invoices & reports
+├── screenshots/
+│   ├── AppFinal1.png
+│   ├── AppFinal2.png
+│   ├── AppFinal3.png
+│   ├── AppFinal4.png
+│   └── AppFinal5.png
+└── README.md
 ---
 
 ## ✅ Features That Are Working
