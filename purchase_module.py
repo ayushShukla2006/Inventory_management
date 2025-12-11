@@ -713,8 +713,8 @@ class PurchaseModule:
                 self.refresh_suppliers()
             except Exception as e:
                 messagebox.showerror("Error", str(e))
-    
-		# ==================== GOODS RECEIPT TABS ====================
+            
+            # ==================== GOODS RECEIPT TABS ====================
     def create_goods_receipt_tab(self):
         """Create goods receipt tab"""
         gr_frame = ttk.Frame(self.notebook)
@@ -745,6 +745,7 @@ class PurchaseModule:
     
         # Bind double-click to view details
         self.receipt_tree.bind('<Double-1>', lambda e: self.view_receipt_details())
+        ttk.Button(top_frame, text="✏️ Edit Receipt", command=self.edit_receipt).pack(pady=5)
         
         self.refresh_receipt_history()
     
@@ -823,6 +824,147 @@ class PurchaseModule:
         for row in self.db.fetchall():
             tree.insert('', 'end', values=row)
     
+    def edit_receipt(self):
+        """Edit an existing partially received invoice"""
+        selected = self.receipt_tree.selection()
+        if not selected:
+            messagebox.showwarning("Warning", "Select a receipt to edit")
+            return
+
+        values = self.receipt_tree.item(selected[0])['values']
+        invoice_number = values[3]
+        
+        # Fetch all rows
+        self.db.execute("""
+            SELECT gr.receipt_id, gr.item_id, i.name,
+                gr.received_quantity, gr.accepted_quantity, gr.rejected_quantity, gr.notes,
+                poi.ordered_quantity
+            FROM Goods_Receipt gr
+            JOIN Items i ON i.item_id = gr.item_id
+            JOIN Purchase_Order_Items poi ON poi.item_id = gr.item_id
+            WHERE gr.invoice_number = ?
+        """, (invoice_number,))
+        rows = self.db.fetchall()
+
+
+        dialog = tk.Toplevel(self.app.root)
+        dialog.title(f"Edit Receipt - Invoice {invoice_number}")
+        dialog.geometry("900x600")
+        dialog.transient(self.app.root)
+        dialog.grab_set()
+
+        frame = ttk.LabelFrame(dialog, text="Edit Items", padding=10)
+        frame.pack(fill='both', expand=True, padx=10, pady=10)
+
+        columns = ("Item", "Received", "Accepted", "Rejected", "Notes")
+        tree = ttk.Treeview(frame, columns=columns, show='headings', height=12)
+        for col in columns:
+            tree.heading(col, text=col)
+            tree.column(col, width=150)
+        tree.pack(fill='both', expand=True)
+        
+        def edit_cell(event):
+            """Double-click → edit Treeview cell"""
+            region = tree.identify("region", event.x, event.y)
+            if region != "cell":
+                return
+
+            row_id = tree.identify_row(event.y)
+            col_id = tree.identify_column(event.x)
+
+            if not row_id or not col_id:
+                return
+
+            # Column index
+            col_num = int(col_id.replace("#", "")) - 1
+
+            # Only allow editing for Received / Accepted / Rejected / Notes
+            if col_num == 0:
+                return  # Item name is not editable
+
+            x, y, width, height = tree.bbox(row_id, col_id)
+            value = tree.item(row_id)["values"][col_num]
+
+            # Create entry box
+            entry = tk.Entry(tree)
+            entry.insert(0, value)
+            entry.place(x=x, y=y, width=width, height=height)
+
+            entry.focus()
+
+            def save_edit(event):
+                new_value = entry.get()
+                entry.destroy()
+
+                # Prevent bad values
+                if col_num in (1, 2, 3):  # received, accepted, rejected
+                    try:
+                        new_value = int(new_value)
+                    except:
+                        messagebox.showerror("Error", "Quantity must be a number")
+                        return
+
+                values = list(tree.item(row_id)["values"])
+                values[col_num] = new_value
+                tree.item(row_id, values=values)
+
+            entry.bind("<Return>", save_edit)
+            entry.bind("<FocusOut>", save_edit)
+
+        
+        tree.bind("<Double-1>", edit_cell)
+
+        # Load data
+        editable = []
+        for rec_id, item_id, name, recv, acc, rej, notes in rows:
+            editable.append([rec_id, item_id, name, recv, acc, rej, notes])
+            tree.insert("", "end", values=(name, recv, acc, rej, notes))
+
+        
+        def save_changes():
+            try:
+                children = tree.get_children()
+                for idx, child in enumerate(children):
+                    name, recv, acc, rej, notes = tree.item(child)["values"]
+                    recv = int(recv)
+                    acc = int(acc)
+                    rej = int(rej)
+
+                    if recv != acc + rej:
+                        messagebox.showerror("Error", "Accepted + Rejected must equal Received")
+                        return
+
+                    rec_id, item_id, _, old_recv, old_acc, old_rej, _ = editable[idx]
+
+                    # Calculate inventory correction:
+                    diff = acc - old_acc  # only accepted affects inventory
+                
+                    # Update GR row
+                    self.db.execute("""
+                        UPDATE Goods_Receipt
+                        SET received_quantity=?, accepted_quantity=?, rejected_quantity=?, notes=?
+                        WHERE receipt_id=?
+                    """, (recv, acc, rej, notes, rec_id))
+
+                    # Update inventory only by the difference
+                    if diff != 0:
+                        self.db.execute("""
+                            UPDATE Inventory 
+                            SET quantity_on_hand = quantity_on_hand + ?, last_updated=?
+                            WHERE item_id=?
+                        """, (diff, datetime.now(), item_id))
+
+                self.db.commit()
+                messagebox.showinfo("Success", "Receipt updated successfully!")
+                dialog.destroy()
+                self.app.refresh_all_tabs()
+
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed: {e}")
+
+        ttk.Button(dialog, text="💾 Save Changes", command=save_changes).pack(pady=10)
+
+    
     def new_goods_receipt(self):
         """Create new goods receipt - multi-item"""
         self.db.execute("SELECT COUNT(*) FROM Suppliers")
@@ -890,6 +1032,21 @@ class PurchaseModule:
         ttk.Label(items_input_frame, text="Rejected:*").grid(row=2, column=0, padx=5, pady=5, sticky='w')
         reject_entry = ttk.Entry(items_input_frame, width=15, state='disabled')
         reject_entry.grid(row=2, column=1, padx=5, pady=5, sticky='w')
+        
+        def auto_calc_reject(*args):
+            """Auto-fill rejected = received - accepted"""
+            try:
+                recv = int(recv_entry.get())
+                accept = int(accept_entry.get())
+                if accept <= recv:
+                    reject_entry.delete(0, tk.END)
+                    reject_entry.insert(0, str(recv - accept))
+            except:
+              pass  # ignore incomplete typing
+
+        recv_entry.bind("<KeyRelease>", auto_calc_reject)
+        accept_entry.bind("<KeyRelease>", auto_calc_reject)
+
         
         ttk.Label(items_input_frame, text="Notes:").grid(row=2, column=2, padx=5, pady=5)
         notes_entry = ttk.Entry(items_input_frame, width=30, state='disabled')
@@ -1097,6 +1254,12 @@ class PurchaseModule:
                 return
             if not invoice_entry.get().strip():
                 messagebox.showerror("Error", "Enter invoice number")
+                return
+            # Prevent duplicate invoices
+            self.db.execute("SELECT COUNT(*) FROM Goods_Receipt WHERE invoice_number = ?", 
+                (invoice_entry.get().strip(),))
+            if self.db.fetchone()[0] > 0:
+                messagebox.showerror("Error", "This invoice number already exists. Duplicate invoices are not allowed.")
                 return
             if not selected_items:
                 messagebox.showerror("Error", "Add at least one item to the receipt")
