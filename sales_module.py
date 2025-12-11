@@ -1,5 +1,6 @@
 """
-Sales Module - Handles all sales department operations
+Enhanced Sales Module - Multi-item orders with data integrity (COMPLETE)
+Save as: sales_module.py
 """
 
 import tkinter as tk
@@ -11,522 +12,471 @@ class SalesModule:
         self.notebook = notebook
         self.db = db
         self.app = app
-        
-        # Create all sales tabs
         self.create_customers_tab()
         self.create_sales_order_tab()
         self.create_invoices_tab()
         self.create_sales_reports_tab()
     
     def refresh_all(self):
-        """Refresh all sales tabs"""
         self.refresh_customers()
         self.refresh_sales_orders()
         self.refresh_invoices()
         self.refresh_sales_reports()
     
-    # ==================== CUSTOMERS TAB ====================
-    
     def create_customers_tab(self):
-        """Create customers management tab"""
         cust_frame = ttk.Frame(self.notebook)
         self.notebook.add(cust_frame, text="👥 Customers")
-        
         top_btn_frame = ttk.Frame(cust_frame)
         top_btn_frame.pack(side='top', fill='x', padx=10, pady=8)
-        
-        ttk.Button(top_btn_frame, text="➕ Add Customer", command=self.add_customer).pack(side='left', padx=3)
+        ttk.Button(top_btn_frame, text="➕ Add", command=self.add_customer).pack(side='left', padx=3)
         ttk.Button(top_btn_frame, text="✏️ Edit", command=self.edit_customer).pack(side='left', padx=3)
         ttk.Button(top_btn_frame, text="🗑️ Delete", command=self.delete_customer).pack(side='left', padx=3)
         ttk.Button(top_btn_frame, text="🔄 Refresh", command=self.refresh_customers).pack(side='right', padx=3)
-        
         columns = ("ID", "Name", "Contact", "Phone", "Email", "Credit Limit", "Terms")
         self.cust_tree = ttk.Treeview(cust_frame, columns=columns, show='headings', height=25)
-        
         widths = [50, 150, 120, 100, 150, 100, 120]
         for i, col in enumerate(columns):
             self.cust_tree.heading(col, text=col)
             self.cust_tree.column(col, width=widths[i])
-        
         self.cust_tree.pack(side='left', fill='both', expand=True, padx=10, pady=(0, 10))
-        
         scrollbar = ttk.Scrollbar(cust_frame, orient='vertical', command=self.cust_tree.yview)
         scrollbar.pack(side='right', fill='y', pady=(0, 10), padx=(0, 10))
         self.cust_tree.configure(yscrollcommand=scrollbar.set)
-        
         self.refresh_customers()
     
     def refresh_customers(self):
-        """Refresh customers display"""
         for item in self.cust_tree.get_children():
             self.cust_tree.delete(item)
-        
         self.db.execute("SELECT customer_id, name, contact_person, phone, email, credit_limit, payment_terms FROM Customers")
-        
         for row in self.db.fetchall():
             self.cust_tree.insert('', 'end', values=row)
     
     def add_customer(self):
-        """Add new customer"""
         dialog = tk.Toplevel(self.app.root)
         dialog.title("Add Customer")
         dialog.geometry("450x400")
-        dialog.resizable(False, False)
         dialog.transient(self.app.root)
         dialog.grab_set()
-        
-        fields = [
-            ("Customer Name:", "name"),
-            ("Contact Person:", "contact"),
-            ("Phone:", "phone"),
-            ("Email:", "email"),
-            ("Address:", "address"),
-            ("Credit Limit:", "credit"),
-            ("Payment Terms:", "terms")
-        ]
-        
+        fields = [("Customer Name:*", "name"), ("Contact Person:", "contact"), ("Phone:", "phone"),
+            ("Email:", "email"), ("Address:", "address"), ("Credit Limit:", "credit"), ("Payment Terms:", "terms")]
         entries = {}
         for i, (label, key) in enumerate(fields):
             ttk.Label(dialog, text=label).grid(row=i, column=0, padx=10, pady=8, sticky='w')
             entry = ttk.Entry(dialog, width=30)
             entry.grid(row=i, column=1, padx=10, pady=8)
             entries[key] = entry
-        
         def save():
             try:
-                self.db.execute(
-                    "INSERT INTO Customers (name, contact_person, phone, email, address, credit_limit, payment_terms) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                    (entries["name"].get(), entries["contact"].get(), entries["phone"].get(),
-                     entries["email"].get(), entries["address"].get(), 
-                     float(entries["credit"].get()) if entries["credit"].get() else 0,
-                     entries["terms"].get())
-                )
+                if not entries["name"].get().strip():
+                    messagebox.showerror("Error", "Customer name required")
+                    return
+                credit = 0
+                if entries["credit"].get().strip():
+                    try:
+                        credit = float(entries["credit"].get())
+                        if credit < 0:
+                            messagebox.showerror("Error", "Credit limit cannot be negative")
+                            return
+                    except ValueError:
+                        messagebox.showerror("Error", "Invalid credit limit")
+                        return
+                self.db.execute("INSERT INTO Customers (name, contact_person, phone, email, address, credit_limit, payment_terms) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (entries["name"].get().strip(), entries["contact"].get(), entries["phone"].get(),
+                     entries["email"].get(), entries["address"].get(), credit, entries["terms"].get()))
                 self.db.commit()
                 messagebox.showinfo("Success", "Customer added!")
                 dialog.destroy()
                 self.refresh_customers()
             except Exception as e:
-                messagebox.showerror("Error", f"Failed: {str(e)}")
-        
+                messagebox.showerror("Error", str(e))
         ttk.Button(dialog, text="Save", command=save).grid(row=len(fields), column=0, columnspan=2, pady=15)
     
     def edit_customer(self):
-        """Edit selected customer"""
         selected = self.cust_tree.selection()
         if not selected:
-            messagebox.showwarning("Warning", "Please select a customer")
+            messagebox.showwarning("Warning", "Select a customer")
             return
-        
         customer_id = self.cust_tree.item(selected[0])['values'][0]
-        
         self.db.execute("SELECT name, contact_person, phone, email, address, credit_limit, payment_terms FROM Customers WHERE customer_id = ?", (customer_id,))
         data = self.db.fetchone()
-        
         dialog = tk.Toplevel(self.app.root)
         dialog.title("Edit Customer")
         dialog.geometry("450x400")
-        dialog.resizable(False, False)
         dialog.transient(self.app.root)
         dialog.grab_set()
-        
-        fields = ["Name:", "Contact:", "Phone:", "Email:", "Address:", "Credit Limit:", "Terms:"]
+        fields = ["Name:", "Contact:", "Phone:", "Email:", "Address:", "Credit:", "Terms:"]
         entries = []
-        
         for i, (field, value) in enumerate(zip(fields, data)):
             ttk.Label(dialog, text=field).grid(row=i, column=0, padx=10, pady=8, sticky='w')
             entry = ttk.Entry(dialog, width=30)
             entry.insert(0, value or "")
             entry.grid(row=i, column=1, padx=10, pady=8)
             entries.append(entry)
-        
         def update():
             try:
-                self.db.execute(
-                    "UPDATE Customers SET name=?, contact_person=?, phone=?, email=?, address=?, credit_limit=?, payment_terms=? WHERE customer_id=?",
-                    (entries[0].get(), entries[1].get(), entries[2].get(), entries[3].get(),
-                     entries[4].get(), float(entries[5].get()) if entries[5].get() else 0,
-                     entries[6].get(), customer_id)
-                )
+                if not entries[0].get().strip():
+                    messagebox.showerror("Error", "Name required")
+                    return
+                credit = float(entries[5].get()) if entries[5].get() else 0
+                if credit < 0:
+                    messagebox.showerror("Error", "Credit cannot be negative")
+                    return
+                self.db.execute("UPDATE Customers SET name=?, contact_person=?, phone=?, email=?, address=?, credit_limit=?, payment_terms=? WHERE customer_id=?",
+                    (entries[0].get(), entries[1].get(), entries[2].get(), entries[3].get(), entries[4].get(), credit, entries[6].get(), customer_id))
                 self.db.commit()
-                messagebox.showinfo("Success", "Customer updated!")
+                messagebox.showinfo("Success", "Updated!")
                 dialog.destroy()
                 self.refresh_customers()
             except Exception as e:
-                messagebox.showerror("Error", f"Failed: {str(e)}")
-        
+                messagebox.showerror("Error", str(e))
         ttk.Button(dialog, text="Update", command=update).grid(row=len(fields), column=0, columnspan=2, pady=15)
     
     def delete_customer(self):
-        """Delete selected customer"""
         selected = self.cust_tree.selection()
         if not selected:
-            messagebox.showwarning("Warning", "Please select a customer")
+            messagebox.showwarning("Warning", "Select a customer")
             return
-        
-        values = self.cust_tree.item(selected[0])['values']
-        customer_id, name = values[0], values[1]
-        
-        # Check if customer has orders
+        customer_id, name = self.cust_tree.item(selected[0])['values'][0], self.cust_tree.item(selected[0])['values'][1]
         self.db.execute("SELECT COUNT(*) FROM Sales_Orders WHERE customer_id = ?", (customer_id,))
-        if self.db.fetchone()[0] > 0:
-            messagebox.showwarning("Warning", f"Cannot delete '{name}' - has sales orders")
+        so_count = self.db.fetchone()[0]
+        self.db.execute("SELECT COUNT(*) FROM Invoices WHERE customer_id = ?", (customer_id,))
+        inv_count = self.db.fetchone()[0]
+        if so_count > 0 or inv_count > 0:
+            msg = f"Cannot delete '{name}'\n\nReferenced in:\n"
+            if so_count > 0: msg += f"- {so_count} Sales Order(s)\n"
+            if inv_count > 0: msg += f"- {inv_count} Invoice(s)\n"
+            msg += "\nData integrity protected."
+            messagebox.showerror("Cannot Delete", msg)
             return
-        
-        if messagebox.askyesno("Confirm", f"Delete customer '{name}'?"):
+        if messagebox.askyesno("Confirm", f"Delete '{name}'?"):
             try:
                 self.db.execute("DELETE FROM Customers WHERE customer_id = ?", (customer_id,))
                 self.db.commit()
-                messagebox.showinfo("Success", "Customer deleted!")
+                messagebox.showinfo("Success", "Deleted!")
                 self.refresh_customers()
             except Exception as e:
-                messagebox.showerror("Error", f"Failed: {str(e)}")
-    
-    # ==================== SALES ORDERS TAB ====================
+                messagebox.showerror("Error", str(e))
     
     def create_sales_order_tab(self):
-        """Create sales order tab"""
         so_frame = ttk.Frame(self.notebook)
         self.notebook.add(so_frame, text="🛍️ Sales Orders")
-        
         top_btn_frame = ttk.Frame(so_frame)
         top_btn_frame.pack(side='top', fill='x', padx=10, pady=8)
-        
         ttk.Button(top_btn_frame, text="➕ Create SO", command=self.create_sales_order).pack(side='left', padx=3)
         ttk.Button(top_btn_frame, text="👁️ View Details", command=self.view_so_details).pack(side='left', padx=3)
+        ttk.Button(top_btn_frame, text="🗑️ Delete SO", command=self.delete_sales_order).pack(side='left', padx=3)
         ttk.Button(top_btn_frame, text="📄 Generate Invoice", command=self.generate_invoice_from_so).pack(side='left', padx=3)
         ttk.Button(top_btn_frame, text="🔄 Refresh", command=self.refresh_sales_orders).pack(side='right', padx=3)
-        
-        columns = ("SO#", "Customer", "Order Date", "Delivery Date", "Status", "Amount")
+        columns = ("SO#", "Customer", "Order Date", "Delivery", "Status", "Amount", "Items")
         self.so_tree = ttk.Treeview(so_frame, columns=columns, show='headings', height=25)
-        
-        for col in columns:
+        widths = [60, 150, 100, 100, 100, 100, 60]
+        for i, col in enumerate(columns):
             self.so_tree.heading(col, text=col)
-            self.so_tree.column(col, width=150)
-        
+            self.so_tree.column(col, width=widths[i])
         self.so_tree.pack(side='left', fill='both', expand=True, padx=10, pady=(0, 10))
-        
         scrollbar = ttk.Scrollbar(so_frame, orient='vertical', command=self.so_tree.yview)
         scrollbar.pack(side='right', fill='y', pady=(0, 10), padx=(0, 10))
         self.so_tree.configure(yscrollcommand=scrollbar.set)
-        
         self.refresh_sales_orders()
     
     def refresh_sales_orders(self):
-        """Refresh sales orders"""
         for item in self.so_tree.get_children():
             self.so_tree.delete(item)
-        
-        self.db.execute('''
-            SELECT so.so_number, c.name, so.order_date, so.delivery_date, 
-                   so.status, so.total_amount
-            FROM Sales_Orders so
-            JOIN Customers c ON so.customer_id = c.customer_id
-            ORDER BY so.so_number DESC
-        ''')
-        
+        self.db.execute('''SELECT so.so_number, c.name, so.order_date, so.delivery_date, so.status, so.total_amount,
+            (SELECT COUNT(*) FROM Sales_Order_Items WHERE so_number = so.so_number) as item_count
+            FROM Sales_Orders so JOIN Customers c ON so.customer_id = c.customer_id ORDER BY so.so_number DESC''')
         for row in self.db.fetchall():
             self.so_tree.insert('', 'end', values=row)
     
     def create_sales_order(self):
-        """Create new sales order"""
         self.db.execute("SELECT COUNT(*) FROM Customers")
         if self.db.fetchone()[0] == 0:
             messagebox.showwarning("Warning", "Add customers first")
             return
-        
-        self.db.execute("SELECT COUNT(*) FROM Items")
+        self.db.execute("SELECT COUNT(*) FROM Items WHERE item_id IN (SELECT item_id FROM Inventory WHERE quantity_on_hand > 0)")
         if self.db.fetchone()[0] == 0:
-            messagebox.showwarning("Warning", "Add items first")
+            messagebox.showwarning("Warning", "No items in stock!")
             return
-        
         dialog = tk.Toplevel(self.app.root)
-        dialog.title("Create Sales Order")
-        dialog.geometry("600x400")
-        dialog.resizable(False, False)
+        dialog.title("Create Sales Order - Multi-Item")
+        dialog.geometry("850x700")
         dialog.transient(self.app.root)
         dialog.grab_set()
         
-        ttk.Label(dialog, text="Customer:").grid(row=0, column=0, padx=10, pady=10, sticky='w')
-        
-        self.db.execute("SELECT customer_id, name FROM Customers")
+        # Customer
+        ttk.Label(dialog, text="Customer:*", font=('Arial', 10, 'bold')).grid(row=0, column=0, padx=10, pady=10, sticky='w')
+        self.db.execute("SELECT customer_id, name FROM Customers ORDER BY name")
         customers = self.db.fetchall()
         customer_dict = {f"{c[1]} (ID: {c[0]})": c[0] for c in customers}
-        
         customer_var = tk.StringVar()
         customer_combo = ttk.Combobox(dialog, textvariable=customer_var, values=list(customer_dict.keys()), width=40, state='readonly')
-        customer_combo.grid(row=0, column=1, padx=10, pady=10)
+        customer_combo.grid(row=0, column=1, padx=10, pady=10, columnspan=2)
         
-        ttk.Label(dialog, text="Delivery Date (YYYY-MM-DD):").grid(row=1, column=0, padx=10, pady=10, sticky='w')
+        # Delivery Date
+        ttk.Label(dialog, text="Delivery Date (YYYY-MM-DD):*", font=('Arial', 10, 'bold')).grid(row=1, column=0, padx=10, pady=10, sticky='w')
         delivery_entry = ttk.Entry(dialog, width=42)
         delivery_entry.insert(0, (datetime.now() + timedelta(days=7)).strftime('%Y-%m-%d'))
-        delivery_entry.grid(row=1, column=1, padx=10, pady=10)
+        delivery_entry.grid(row=1, column=1, padx=10, pady=10, columnspan=2)
         
-        ttk.Label(dialog, text="Item:").grid(row=2, column=0, padx=10, pady=10, sticky='w')
+        # Item Selection
+        ttk.Label(dialog, text="Add Items:", font=('Arial', 11, 'bold')).grid(row=2, column=0, padx=10, pady=(20, 10), sticky='w', columnspan=3)
+        item_frame = ttk.LabelFrame(dialog, text="Item Selection", padding=10)
+        item_frame.grid(row=3, column=0, columnspan=3, padx=10, pady=10, sticky='ew')
         
-        self.db.execute('''
-            SELECT i.item_id, i.name, i.selling_price, inv.quantity_on_hand
-            FROM Items i
-            JOIN Inventory inv ON i.item_id = inv.item_id
-            WHERE inv.quantity_on_hand > 0
-        ''')
+        ttk.Label(item_frame, text="Item:").grid(row=0, column=0, padx=5, pady=5, sticky='w')
+        self.db.execute('''SELECT i.item_id, i.name, i.selling_price, inv.quantity_on_hand
+            FROM Items i JOIN Inventory inv ON i.item_id = inv.item_id WHERE inv.quantity_on_hand > 0 ORDER BY i.name''')
         items = self.db.fetchall()
-        
-        if not items:
-            messagebox.showwarning("Warning", "No items available in stock!")
-            dialog.destroy()
-            return
-        
-        item_dict = {f"{i[1]} (${i[2]}) [Stock: {i[3]}]": (i[0], i[2], i[3]) for i in items}
-        
+        item_dict = {f"{i[1]} (${i[2]:.2f}) [Stock: {i[3]}]": (i[0], i[2], i[3]) for i in items}
         item_var = tk.StringVar()
-        item_combo = ttk.Combobox(dialog, textvariable=item_var, values=list(item_dict.keys()), width=40, state='readonly')
-        item_combo.grid(row=2, column=1, padx=10, pady=10)
+        item_combo = ttk.Combobox(item_frame, textvariable=item_var, values=list(item_dict.keys()), width=40, state='readonly')
+        item_combo.grid(row=0, column=1, padx=5, pady=5, columnspan=2)
         
-        ttk.Label(dialog, text="Quantity:").grid(row=3, column=0, padx=10, pady=10, sticky='w')
-        qty_entry = ttk.Entry(dialog, width=42)
-        qty_entry.grid(row=3, column=1, padx=10, pady=10)
+        ttk.Label(item_frame, text="Qty:").grid(row=0, column=3, padx=5, pady=5)
+        qty_entry = ttk.Entry(item_frame, width=10)
+        qty_entry.grid(row=0, column=4, padx=5, pady=5)
         
-        # Stock availability label
-        stock_label = ttk.Label(dialog, text="", foreground="blue")
-        stock_label.grid(row=4, column=0, columnspan=2, pady=5)
+        stock_label = ttk.Label(item_frame, text="", foreground="blue")
+        stock_label.grid(row=1, column=0, columnspan=7, pady=5)
+        
+        selected_items = []
         
         def on_item_select(event):
             if item_var.get():
                 _, _, stock = item_dict[item_var.get()]
-                stock_label.config(text=f"Available Stock: {stock} units")
+                stock_label.config(text=f"Available: {stock} units")
         
         item_combo.bind('<<ComboboxSelected>>', on_item_select)
         
-        def save():
+        def add_item():
+            if not item_var.get():
+                messagebox.showwarning("Warning", "Select an item")
+                return
             try:
-                if not customer_var.get() or not item_var.get():
-                    messagebox.showerror("Error", "Select customer and item")
-                    return
-                
-                customer_id = customer_dict[customer_var.get()]
-                item_id, selling_price, available_stock = item_dict[item_var.get()]
-                quantity = int(qty_entry.get())
-                
-                # Check stock availability
-                if quantity > available_stock:
-                    messagebox.showerror("Error", f"Insufficient stock! Available: {available_stock}")
-                    return
-                
-                if quantity <= 0:
+                qty = int(qty_entry.get())
+                if qty <= 0:
                     messagebox.showerror("Error", "Quantity must be positive")
                     return
+                item_id, selling_price, stock = item_dict[item_var.get()]
+                if qty > stock:
+                    messagebox.showerror("Error", f"Insufficient stock! Available: {stock}")
+                    return
+                item_name = item_var.get().split(' ($')[0]
+                for existing in selected_items:
+                    if existing[0] == item_id:
+                        messagebox.showwarning("Warning", "Item already added")
+                        return
+                subtotal = selling_price * qty
+                selected_items.append((item_id, item_name, qty, selling_price, subtotal, stock))
+                items_tree.insert('', 'end', values=(item_name, qty, f"${selling_price:.2f}", f"${subtotal:.2f}"))
+                update_total()
+                item_var.set('')
+                qty_entry.delete(0, tk.END)
+                stock_label.config(text="")
+            except ValueError:
+                messagebox.showerror("Error", "Invalid quantity")
+        
+        def remove_item():
+            selected = items_tree.selection()
+            if not selected:
+                messagebox.showwarning("Warning", "Select item to remove")
+                return
+            idx = items_tree.index(selected[0])
+            selected_items.pop(idx)
+            items_tree.delete(selected[0])
+            update_total()
+        
+        def update_total():
+            total = sum(item[4] for item in selected_items)
+            total_label.config(text=f"Total Amount: ${total:.2f}")
+        
+        ttk.Button(item_frame, text="➕ Add", command=add_item).grid(row=0, column=5, padx=5, pady=5)
+        ttk.Button(item_frame, text="➖ Remove", command=remove_item).grid(row=0, column=6, padx=5, pady=5)
+        
+        # Items List
+        list_frame = ttk.LabelFrame(dialog, text="Items in Order", padding=10)
+        list_frame.grid(row=4, column=0, columnspan=3, padx=10, pady=10, sticky='nsew')
+        columns = ("Item", "Quantity", "Unit Price", "Subtotal")
+        items_tree = ttk.Treeview(list_frame, columns=columns, show='headings', height=10)
+        for col in columns:
+            items_tree.heading(col, text=col)
+            items_tree.column(col, width=180)
+        items_tree.pack(fill='both', expand=True)
+        
+        total_label = ttk.Label(dialog, text="Total Amount: $0.00", font=('Arial', 12, 'bold'), foreground='blue')
+        total_label.grid(row=5, column=0, columnspan=3, pady=10)
+        
+        def save_so():
+            try:
+                if not customer_var.get():
+                    messagebox.showerror("Error", "Select a customer")
+                    return
+                if not delivery_entry.get().strip():
+                    messagebox.showerror("Error", "Enter delivery date")
+                    return
+                if not selected_items:
+                    messagebox.showerror("Error", "Add at least one item")
+                    return
+                customer_id = customer_dict[customer_var.get()]
+                total_amount = sum(item[4] for item in selected_items)
                 
-                subtotal = selling_price * quantity
+                # Verify stock again before saving
+                for item_id, name, qty, price, subtotal, original_stock in selected_items:
+                    self.db.execute("SELECT quantity_on_hand FROM Inventory WHERE item_id = ?", (item_id,))
+                    current_stock = self.db.fetchone()[0]
+                    if qty > current_stock:
+                        messagebox.showerror("Error", f"Stock changed! {name} now has only {current_stock} units")
+                        return
                 
-                # Create sales order
-                self.db.execute(
-                    "INSERT INTO Sales_Orders (customer_id, order_date, delivery_date, status, total_amount) VALUES (?, ?, ?, ?, ?)",
-                    (customer_id, datetime.now().date(), delivery_entry.get(), "Pending", subtotal)
-                )
+                # Create SO
+                self.db.execute("INSERT INTO Sales_Orders (customer_id, order_date, delivery_date, status, total_amount) VALUES (?, ?, ?, ?, ?)",
+                    (customer_id, datetime.now().date(), delivery_entry.get(), "Completed", total_amount))
                 so_number = self.db.lastrowid()
                 
-                # Add order items
-                self.db.execute(
-                    "INSERT INTO Sales_Order_Items (so_number, item_id, quantity, unit_price, subtotal) VALUES (?, ?, ?, ?, ?)",
-                    (so_number, item_id, quantity, selling_price, subtotal)
-                )
-                
-                # Reduce inventory
-                self.db.execute(
-                    "UPDATE Inventory SET quantity_on_hand = quantity_on_hand - ?, last_updated = ? WHERE item_id = ?",
-                    (quantity, datetime.now(), item_id)
-                )
-                
-                # Update SO status to Completed (since we're reducing inventory immediately)
-                self.db.execute(
-                    "UPDATE Sales_Orders SET status = 'Completed' WHERE so_number = ?",
-                    (so_number,)
-                )
+                # Add items and reduce inventory
+                for item_id, name, qty, price, subtotal, stock in selected_items:
+                    self.db.execute("INSERT INTO Sales_Order_Items (so_number, item_id, quantity, unit_price, subtotal) VALUES (?, ?, ?, ?, ?)",
+                        (so_number, item_id, qty, price, subtotal))
+                    self.db.execute("UPDATE Inventory SET quantity_on_hand = quantity_on_hand - ?, last_updated = ? WHERE item_id = ?",
+                        (qty, datetime.now(), item_id))
                 
                 self.db.commit()
-                messagebox.showinfo("Success", f"Sales Order #{so_number} created!\nInventory reduced by {quantity} units.")
+                messagebox.showinfo("Success", f"SO #{so_number} created!\n{len(selected_items)} items, Total: ${total_amount:.2f}\nInventory updated.")
                 dialog.destroy()
                 self.app.refresh_all_tabs()
             except Exception as e:
                 messagebox.showerror("Error", f"Failed: {str(e)}")
         
-        ttk.Button(dialog, text="Create Sales Order", command=save).grid(row=5, column=0, columnspan=2, pady=20)
+        btn_frame = ttk.Frame(dialog)
+        btn_frame.grid(row=6, column=0, columnspan=3, pady=20)
+        ttk.Button(btn_frame, text="✅ Create Sales Order", command=save_so, width=25).pack()
+    
+    def delete_sales_order(self):
+        selected = self.so_tree.selection()
+        if not selected:
+            messagebox.showwarning("Warning", "Select a sales order")
+            return
+        so_number = self.so_tree.item(selected[0])['values'][0]
+        self.db.execute("SELECT COUNT(*) FROM Invoices WHERE so_number = ?", (so_number,))
+        inv_count = self.db.fetchone()[0]
+        if inv_count > 0:
+            messagebox.showerror("Cannot Delete", f"SO #{so_number} has {inv_count} invoice(s).\nData integrity protected.")
+            return
+        if messagebox.askyesno("Confirm", f"Delete SO #{so_number}?\n\nNote: Inventory will NOT be restored."):
+            try:
+                self.db.execute("DELETE FROM Sales_Order_Items WHERE so_number = ?", (so_number,))
+                self.db.execute("DELETE FROM Sales_Orders WHERE so_number = ?", (so_number,))
+                self.db.commit()
+                messagebox.showinfo("Success", f"SO #{so_number} deleted!")
+                self.refresh_sales_orders()
+            except Exception as e:
+                messagebox.showerror("Error", str(e))
     
     def view_so_details(self):
-        """View sales order details"""
         selected = self.so_tree.selection()
         if not selected:
             messagebox.showwarning("Warning", "Select a sales order")
             return
-        
         so_number = self.so_tree.item(selected[0])['values'][0]
-        
         dialog = tk.Toplevel(self.app.root)
-        dialog.title(f"Sales Order #{so_number} Details")
-        dialog.geometry("700x400")
-        dialog.resizable(False, False)
+        dialog.title(f"SO #{so_number} Details")
+        dialog.geometry("900x550")
         dialog.transient(self.app.root)
         dialog.grab_set()
-        
-        self.db.execute('''
-            SELECT so.so_number, c.name, so.order_date, so.delivery_date, so.status, so.total_amount
-            FROM Sales_Orders so
-            JOIN Customers c ON so.customer_id = c.customer_id
-            WHERE so.so_number = ?
-        ''', (so_number,))
-        
+        self.db.execute('''SELECT so.so_number, c.name, so.order_date, so.delivery_date, so.status, so.total_amount
+            FROM Sales_Orders so JOIN Customers c ON so.customer_id = c.customer_id WHERE so.so_number = ?''', (so_number,))
         so_info = self.db.fetchone()
-        
         info_frame = ttk.LabelFrame(dialog, text="Order Info", padding=10)
         info_frame.pack(fill='x', padx=10, pady=10)
-        
-        labels = [
-            f"SO#: {so_info[0]}",
-            f"Customer: {so_info[1]}",
-            f"Order Date: {so_info[2]}",
-            f"Delivery: {so_info[3]}",
-            f"Status: {so_info[4]}",
-            f"Total: ${so_info[5]:.2f}"
-        ]
-        
+        labels = [f"SO#: {so_info[0]}", f"Customer: {so_info[1]}", f"Order Date: {so_info[2]}",
+            f"Delivery: {so_info[3]}", f"Status: {so_info[4]}", f"Total: ${so_info[5]:.2f}"]
         for i, text in enumerate(labels):
-            ttk.Label(info_frame, text=text).grid(row=i//2, column=i%2, sticky='w', padx=10, pady=3)
-        
+            ttk.Label(info_frame, text=text, font=('Arial', 10)).grid(row=i//3, column=i%3, sticky='w', padx=15, pady=5)
         items_frame = ttk.LabelFrame(dialog, text="Items", padding=10)
         items_frame.pack(fill='both', expand=True, padx=10, pady=10)
-        
-        columns = ("Item", "Quantity", "Price", "Subtotal")
-        tree = ttk.Treeview(items_frame, columns=columns, show='headings', height=10)
-        
+        columns = ("Item", "Quantity", "Unit Price", "Subtotal")
+        tree = ttk.Treeview(items_frame, columns=columns, show='headings', height=12)
         for col in columns:
             tree.heading(col, text=col)
-        
+            tree.column(col, width=200)
         tree.pack(fill='both', expand=True)
-        
-        self.db.execute('''
-            SELECT i.name, soi.quantity, soi.unit_price, soi.subtotal
-            FROM Sales_Order_Items soi
-            JOIN Items i ON soi.item_id = i.item_id
-            WHERE soi.so_number = ?
-        ''', (so_number,))
-        
+        self.db.execute('''SELECT i.name, soi.quantity, soi.unit_price, soi.subtotal
+            FROM Sales_Order_Items soi JOIN Items i ON soi.item_id = i.item_id WHERE soi.so_number = ?''', (so_number,))
         for row in self.db.fetchall():
-            tree.insert('', 'end', values=row)
+            tree.insert('', 'end', values=(row[0], row[1], f"${row[2]:.2f}", f"${row[3]:.2f}"))
     
     def generate_invoice_from_so(self):
-        """Generate invoice from selected SO"""
         selected = self.so_tree.selection()
         if not selected:
             messagebox.showwarning("Warning", "Select a sales order")
             return
-        
-        so_values = self.so_tree.item(selected[0])['values']
-        so_number = so_values[0]
-        
-        # Check if invoice already exists
+        so_number = self.so_tree.item(selected[0])['values'][0]
         self.db.execute("SELECT invoice_id FROM Invoices WHERE so_number = ?", (so_number,))
         existing = self.db.fetchone()
         if existing:
-            messagebox.showinfo("Info", f"Invoice #{existing[0]} already exists for this order")
+            messagebox.showinfo("Info", f"Invoice #{existing[0]} already exists")
             return
-        
-        # Get SO details
-        self.db.execute('''
-            SELECT customer_id, total_amount
-            FROM Sales_Orders
-            WHERE so_number = ?
-        ''', (so_number,))
-        
+        self.db.execute("SELECT customer_id, total_amount FROM Sales_Orders WHERE so_number = ?", (so_number,))
         customer_id, total_amount = self.db.fetchone()
-        
-        # Create invoice
         invoice_date = datetime.now().date()
         due_date = (datetime.now() + timedelta(days=30)).date()
-        
-        self.db.execute(
-            "INSERT INTO Invoices (so_number, customer_id, invoice_date, due_date, total_amount, status) VALUES (?, ?, ?, ?, ?, ?)",
-            (so_number, customer_id, invoice_date, due_date, total_amount, "Unpaid")
-        )
-        
+        self.db.execute("INSERT INTO Invoices (so_number, customer_id, invoice_date, due_date, total_amount, status) VALUES (?, ?, ?, ?, ?, ?)",
+            (so_number, customer_id, invoice_date, due_date, total_amount, "Unpaid"))
         invoice_id = self.db.lastrowid()
         self.db.commit()
-        
-        messagebox.showinfo("Success", f"Invoice #{invoice_id} generated!\nDue Date: {due_date}")
+        messagebox.showinfo("Success", f"Invoice #{invoice_id} generated!\nDue: {due_date}")
         self.refresh_invoices()
-    
-    # ==================== INVOICES TAB ====================
+        self.refresh_sales_reports()
     
     def create_invoices_tab(self):
-        """Create invoices tab"""
         inv_frame = ttk.Frame(self.notebook)
         self.notebook.add(inv_frame, text="📄 Invoices")
-        
         top_btn_frame = ttk.Frame(inv_frame)
         top_btn_frame.pack(side='top', fill='x', padx=10, pady=8)
-        
-        ttk.Button(top_btn_frame, text="💰 Mark as Paid", command=self.mark_invoice_paid).pack(side='left', padx=3)
+        ttk.Button(top_btn_frame, text="💰 Mark Paid", command=self.mark_invoice_paid).pack(side='left', padx=3)
         ttk.Button(top_btn_frame, text="👁️ View Details", command=self.view_invoice_details).pack(side='left', padx=3)
+        ttk.Button(top_btn_frame, text="🗑️ Delete Invoice", command=self.delete_invoice).pack(side='left', padx=3)
         ttk.Button(top_btn_frame, text="🔄 Refresh", command=self.refresh_invoices).pack(side='right', padx=3)
-        
         columns = ("Invoice#", "SO#", "Customer", "Invoice Date", "Due Date", "Amount", "Status")
         self.invoice_tree = ttk.Treeview(inv_frame, columns=columns, show='headings', height=25)
-        
         for col in columns:
             self.invoice_tree.heading(col, text=col)
             self.invoice_tree.column(col, width=130)
-        
         self.invoice_tree.pack(side='left', fill='both', expand=True, padx=10, pady=(0, 10))
-        
         scrollbar = ttk.Scrollbar(inv_frame, orient='vertical', command=self.invoice_tree.yview)
         scrollbar.pack(side='right', fill='y', pady=(0, 10), padx=(0, 10))
         self.invoice_tree.configure(yscrollcommand=scrollbar.set)
-        
         self.refresh_invoices()
     
     def refresh_invoices(self):
-        """Refresh invoices"""
         for item in self.invoice_tree.get_children():
             self.invoice_tree.delete(item)
-        
-        self.db.execute('''
-            SELECT inv.invoice_id, inv.so_number, c.name, inv.invoice_date, 
-                   inv.due_date, inv.total_amount, inv.status
-            FROM Invoices inv
-            JOIN Customers c ON inv.customer_id = c.customer_id
-            ORDER BY inv.invoice_id DESC
-        ''')
-        
+        self.db.execute('''SELECT inv.invoice_id, inv.so_number, c.name, inv.invoice_date, inv.due_date, inv.total_amount, inv.status
+            FROM Invoices inv JOIN Customers c ON inv.customer_id = c.customer_id ORDER BY inv.invoice_id DESC''')
         for row in self.db.fetchall():
             tag = 'unpaid' if row[6] == 'Unpaid' else 'paid'
             self.invoice_tree.insert('', 'end', values=row, tags=(tag,))
-        
         self.invoice_tree.tag_configure('unpaid', background='#ffe6e6')
         self.invoice_tree.tag_configure('paid', background='#e6ffe6')
     
     def mark_invoice_paid(self):
-        """Mark selected invoice as paid"""
         selected = self.invoice_tree.selection()
         if not selected:
             messagebox.showwarning("Warning", "Select an invoice")
             return
-        
         invoice_id = self.invoice_tree.item(selected[0])['values'][0]
-        
         self.db.execute("UPDATE Invoices SET status = 'Paid' WHERE invoice_id = ?", (invoice_id,))
         self.db.commit()
-        
         messagebox.showinfo("Success", f"Invoice #{invoice_id} marked as Paid!")
         self.refresh_invoices()
+        self.refresh_sales_reports()
     
     def view_invoice_details(self):
-        """View invoice details"""
         selected = self.invoice_tree.selection()
         if not selected:
             messagebox.showwarning("Warning", "Select an invoice")
             return
-        
         invoice_values = self.invoice_tree.item(selected[0])['values']
-        
         msg = f"Invoice Details\n\n"
         msg += f"Invoice #: {invoice_values[0]}\n"
         msg += f"Sales Order #: {invoice_values[1]}\n"
@@ -535,13 +485,31 @@ class SalesModule:
         msg += f"Due Date: {invoice_values[4]}\n"
         msg += f"Amount: ${invoice_values[5]:.2f}\n"
         msg += f"Status: {invoice_values[6]}\n"
-        
         messagebox.showinfo("Invoice Details", msg)
     
-    # ==================== SALES REPORTS TAB ====================
+    def delete_invoice(self):
+        selected = self.invoice_tree.selection()
+        if not selected:
+            messagebox.showwarning("Warning", "Select an invoice")
+            return
+        invoice_id = self.invoice_tree.item(selected[0])['values'][0]
+        status = self.invoice_tree.item(selected[0])['values'][6]
+        
+        if status == "Paid":
+            if not messagebox.askyesno("Warning", f"Invoice #{invoice_id} is marked as PAID.\n\nAre you sure you want to delete it?"):
+                return
+        
+        if messagebox.askyesno("Confirm Delete", f"Delete Invoice #{invoice_id}?\n\nThis action cannot be undone."):
+            try:
+                self.db.execute("DELETE FROM Invoices WHERE invoice_id = ?", (invoice_id,))
+                self.db.commit()
+                messagebox.showinfo("Success", f"Invoice #{invoice_id} deleted!")
+                self.refresh_invoices()
+                self.refresh_sales_reports()
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to delete: {str(e)}")
     
     def create_sales_reports_tab(self):
-        """Create sales reports tab"""
         report_frame = ttk.Frame(self.notebook)
         self.notebook.add(report_frame, text="📊 Sales Reports")
         
@@ -564,7 +532,10 @@ class SalesModule:
         self.unpaid_invoices_label = ttk.Label(summary_frame, text="Unpaid Invoices: 0 ($0.00)", font=('Arial', 12))
         self.unpaid_invoices_label.grid(row=2, column=0, columnspan=2, padx=20, pady=5, sticky='w')
         
-        ttk.Button(summary_frame, text="🔄 Refresh Reports", command=self.refresh_sales_reports).grid(row=3, column=0, columnspan=2, pady=15)
+        self.paid_invoices_label = ttk.Label(summary_frame, text="Paid Invoices: 0 ($0.00)", font=('Arial', 12))
+        self.paid_invoices_label.grid(row=3, column=0, columnspan=2, padx=20, pady=5, sticky='w')
+        
+        ttk.Button(summary_frame, text="🔄 Refresh Reports", command=self.refresh_sales_reports).grid(row=4, column=0, columnspan=2, pady=15)
         
         # Top selling items frame
         items_frame = ttk.LabelFrame(report_frame, text="Top Selling Items", padding=10)
@@ -582,7 +553,6 @@ class SalesModule:
         self.refresh_sales_reports()
     
     def refresh_sales_reports(self):
-        """Refresh sales reports"""
         # Total sales amount
         self.db.execute("SELECT COALESCE(SUM(total_amount), 0) FROM Sales_Orders")
         total_sales = self.db.fetchone()[0]
@@ -607,6 +577,11 @@ class SalesModule:
         self.db.execute("SELECT COUNT(*), COALESCE(SUM(total_amount), 0) FROM Invoices WHERE status = 'Unpaid'")
         unpaid_count, unpaid_amount = self.db.fetchone()
         self.unpaid_invoices_label.config(text=f"Unpaid Invoices: {unpaid_count} (${unpaid_amount:.2f})")
+        
+        # Paid invoices
+        self.db.execute("SELECT COUNT(*), COALESCE(SUM(total_amount), 0) FROM Invoices WHERE status = 'Paid'")
+        paid_count, paid_amount = self.db.fetchone()
+        self.paid_invoices_label.config(text=f"Paid Invoices: {paid_count} (${paid_amount:.2f})")
         
         # Top selling items
         for item in self.top_items_tree.get_children():
