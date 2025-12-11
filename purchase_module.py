@@ -832,8 +832,8 @@ class PurchaseModule:
     
         dialog = tk.Toplevel(self.app.root)
         dialog.title("New Goods Receipt - Multi-Item")
-        dialog.geometry("1000x700")
-        dialog.resizable(False, False)
+        dialog.geometry("1200x800")
+        dialog.resizable(True, True)
         dialog.transient(self.app.root)
         dialog.grab_set()
     
