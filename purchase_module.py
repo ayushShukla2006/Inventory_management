@@ -714,135 +714,233 @@ class PurchaseModule:
             except Exception as e:
                 messagebox.showerror("Error", str(e))
     
-    # ==================== GOODS RECEIPT TABS ====================
-    
+		# ==================== GOODS RECEIPT TABS ====================
     def create_goods_receipt_tab(self):
         """Create goods receipt tab"""
         gr_frame = ttk.Frame(self.notebook)
         self.notebook.add(gr_frame, text="📥 Goods Receipt")
-        
+    
         top_frame = ttk.Frame(gr_frame)
         top_frame.pack(side='top', fill='x', padx=10, pady=10)
         
         ttk.Label(top_frame, text="Record Goods Receipt", font=('Arial', 14, 'bold')).pack(pady=10)
         ttk.Button(top_frame, text="➕ New Receipt", command=self.new_goods_receipt).pack(pady=5)
-        
+    
         history_frame = ttk.LabelFrame(gr_frame, text="Receipt History", padding=10)
         history_frame.pack(fill='both', expand=True, padx=10, pady=10)
-        
-        columns = ("ID", "PO#", "Supplier", "Item", "Invoice", "Received", "Accepted", "Rejected", "Date")
+    
+        columns = ("ID", "PO#", "Supplier", "Invoice", "Items", "Total Received", "Total Accepted", "Date")
         self.receipt_tree = ttk.Treeview(history_frame, columns=columns, show='headings', height=20)
-        
-        widths = [50, 60, 120, 120, 100, 80, 80, 80, 100]
+    
+        widths = [50, 60, 150, 120, 60, 100, 100, 100]
         for i, col in enumerate(columns):
             self.receipt_tree.heading(col, text=col)
             self.receipt_tree.column(col, width=widths[i])
-        
+    
         self.receipt_tree.pack(side='left', fill='both', expand=True)
-        
+    
         scrollbar = ttk.Scrollbar(history_frame, orient='vertical', command=self.receipt_tree.yview)
         scrollbar.pack(side='right', fill='y')
         self.receipt_tree.configure(yscrollcommand=scrollbar.set)
+    
+        # Bind double-click to view details
+        self.receipt_tree.bind('<Double-1>', lambda e: self.view_receipt_details())
         
         self.refresh_receipt_history()
     
     def refresh_receipt_history(self):
-        """Refresh goods receipt history"""
+        """Refresh goods receipt history - showing grouped receipts"""
         for item in self.receipt_tree.get_children():
             self.receipt_tree.delete(item)
         
+        # Get unique receipts grouped by invoice number and PO
         self.db.execute('''
-            SELECT gr.receipt_id, gr.po_number, s.name, i.name, gr.invoice_number,
-                   gr.received_quantity, gr.accepted_quantity, gr.rejected_quantity, gr.receipt_date
-            FROM Goods_Receipt gr
-            JOIN Suppliers s ON gr.supplier_id = s.supplier_id
-            JOIN Items i ON gr.item_id = i.item_id
-            ORDER BY gr.receipt_id DESC
+            SELECT 
+                MIN(gr.receipt_id) as receipt_id,
+                gr.po_number, 
+                s.name, 
+                gr.invoice_number,
+                COUNT(DISTINCT gr.item_id) as item_count,
+                SUM(gr.received_quantity) as total_received,
+                SUM(gr.accepted_quantity) as total_accepted,
+                gr.receipt_date
+                FROM Goods_Receipt gr
+                JOIN Suppliers s ON gr.supplier_id = s.supplier_id
+            GROUP BY gr.invoice_number, gr.po_number, gr.receipt_date
+            ORDER BY MIN(gr.receipt_id) DESC
         ''')
-        
+    
         for row in self.db.fetchall():
             self.receipt_tree.insert('', 'end', values=row)
     
+    def view_receipt_details(self):
+        """View detailed items in a receipt"""
+        selected = self.receipt_tree.selection()
+        if not selected:
+            messagebox.showwarning("Warning", "Select a receipt to view details")
+            return
+    
+        values = self.receipt_tree.item(selected[0])['values']
+        invoice_number = values[3]
+    
+        dialog = tk.Toplevel(self.app.root)
+        dialog.title(f"Receipt Details - Invoice: {invoice_number}")
+        dialog.geometry("900x500")
+        dialog.transient(self.app.root)
+        dialog.grab_set()
+    
+        #Header info
+        info_frame = ttk.LabelFrame(dialog, text="Receipt Information", padding=10)
+        info_frame.pack(fill='x', padx=10, pady=10)
+        
+        ttk.Label(info_frame, text=f"PO #: {values[1]}  |  Supplier: {values[2]}  |  Invoice: {values[3]}  |  Date: {values[7]}", 
+                font=('Arial', 10, 'bold')).pack()
+    
+        #Items details
+        items_frame = ttk.LabelFrame(dialog, text="Items Received", padding=10)
+        items_frame.pack(fill='both', expand=True, padx=10, pady=10)
+        
+        columns = ("Item Name", "Received", "Accepted", "Rejected", "Notes")
+        tree = ttk.Treeview(items_frame, columns=columns, show='headings', height=15)
+        
+        widths = [250, 100, 100, 100, 200]
+        for i, col in enumerate(columns):
+            tree.heading(col, text=col)
+            tree.column(col, width=widths[i])
+    
+        tree.pack(fill='both', expand=True)
+    
+        #Get items for this receipt
+        self.db.execute('''
+            SELECT i.name, gr.received_quantity, gr.accepted_quantity, 
+                gr.rejected_quantity, gr.notes
+            FROM Goods_Receipt gr
+            JOIN Items i ON gr.item_id = i.item_id
+            WHERE gr.invoice_number = ?
+            ORDER BY i.name
+            ''', (invoice_number,))
+    
+        for row in self.db.fetchall():
+            tree.insert('', 'end', values=row)
+    
     def new_goods_receipt(self):
-        """Create new goods receipt"""
+        """Create new goods receipt - multi-item"""
         self.db.execute("SELECT COUNT(*) FROM Suppliers")
         if self.db.fetchone()[0] == 0:
             messagebox.showwarning("Warning", "Add suppliers first")
             return
-        
+    
         dialog = tk.Toplevel(self.app.root)
-        dialog.title("New Goods Receipt")
-        dialog.geometry("550x600")
+        dialog.title("New Goods Receipt - Multi-Item")
+        dialog.geometry("1000x700")
         dialog.resizable(False, False)
         dialog.transient(self.app.root)
         dialog.grab_set()
-        
-        # Step 1: Supplier
-        ttk.Label(dialog, text="Step 1: Select Supplier", font=('Arial', 11, 'bold')).grid(row=0, column=0, columnspan=2, padx=10, pady=10, sticky='w')
-        
-        ttk.Label(dialog, text="Supplier:").grid(row=1, column=0, padx=10, pady=8, sticky='w')
-        
+    
+        # Step 1: Supplier & Invoice Details
+        header_frame = ttk.LabelFrame(dialog, text="Step 1: Supplier & Invoice Details", padding=15)
+        header_frame.pack(fill='x', padx=10, pady=10)
+    
+        ttk.Label(header_frame, text="Supplier:*").grid(row=0, column=0, padx=10, pady=8, sticky='w')
+    
         self.db.execute("SELECT supplier_id, name FROM Suppliers ORDER BY name")
         suppliers = self.db.fetchall()
         supplier_dict = {f"{s[1]} (ID: {s[0]})": s[0] for s in suppliers}
-        
+    
         supplier_var = tk.StringVar()
-        supplier_combo = ttk.Combobox(dialog, textvariable=supplier_var, values=list(supplier_dict.keys()), width=40, state='readonly')
-        supplier_combo.grid(row=1, column=1, padx=10, pady=8)
-        
-        # Step 2: PO and Item (initially disabled)
-        ttk.Label(dialog, text="Step 2: Select PO & Item", font=('Arial', 11, 'bold')).grid(row=2, column=0, columnspan=2, padx=10, pady=(20, 10), sticky='w')
-        
-        ttk.Label(dialog, text="Purchase Order:").grid(row=3, column=0, padx=10, pady=8, sticky='w')
+        supplier_combo = ttk.Combobox(header_frame, textvariable=supplier_var, 
+                                    values=list(supplier_dict.keys()), width=40, state='readonly')
+        supplier_combo.grid(row=0, column=1, padx=10, pady=8)
+    
+        ttk.Label(header_frame, text="Purchase Order:*").grid(row=1, column=0, padx=10, pady=8, sticky='w')
         po_var = tk.StringVar()
-        po_combo = ttk.Combobox(dialog, textvariable=po_var, width=40, state='disabled')
-        po_combo.grid(row=3, column=1, padx=10, pady=8)
-        
-        ttk.Label(dialog, text="Item:").grid(row=4, column=0, padx=10, pady=8, sticky='w')
-        item_var = tk.StringVar()
-        item_combo = ttk.Combobox(dialog, textvariable=item_var, width=40, state='disabled')
-        item_combo.grid(row=4, column=1, padx=10, pady=8)
-        
-        # Step 3: Receipt Details (initially disabled)
-        ttk.Label(dialog, text="Step 3: Receipt Details", font=('Arial', 11, 'bold')).grid(row=5, column=0, columnspan=2, padx=10, pady=(20, 10), sticky='w')
-        
-        ttk.Label(dialog, text="Invoice Number:").grid(row=6, column=0, padx=10, pady=8, sticky='w')
-        invoice_entry = ttk.Entry(dialog, width=42, state='disabled')
-        invoice_entry.grid(row=6, column=1, padx=10, pady=8)
-        
-        ttk.Label(dialog, text="Receipt Date (YYYY-MM-DD):").grid(row=7, column=0, padx=10, pady=8, sticky='w')
-        date_entry = ttk.Entry(dialog, width=42, state='disabled')
+        po_combo = ttk.Combobox(header_frame, textvariable=po_var, width=40, state='disabled')
+        po_combo.grid(row=1, column=1, padx=10, pady=8)
+    
+        ttk.Label(header_frame, text="Invoice Number:*").grid(row=0, column=2, padx=10, pady=8, sticky='w')
+        invoice_entry = ttk.Entry(header_frame, width=30)
+        invoice_entry.grid(row=0, column=3, padx=10, pady=8)
+    
+        ttk.Label(header_frame, text="Receipt Date:*").grid(row=1, column=2, padx=10, pady=8, sticky='w')
+        date_entry = ttk.Entry(header_frame, width=30)
         date_entry.insert(0, datetime.now().strftime('%Y-%m-%d'))
-        date_entry.grid(row=7, column=1, padx=10, pady=8)
+        date_entry.grid(row=1, column=3, padx=10, pady=8)
+    
+        # Step 2: Add Items
+        items_input_frame = ttk.LabelFrame(dialog, text="Step 2: Add Items from PO", padding=10)
+        items_input_frame.pack(fill='x', padx=10, pady=10)
+    
+        ttk.Label(items_input_frame, text="Select Item:").grid(row=0, column=0, padx=5, pady=5, sticky='w')
+        item_var = tk.StringVar()
+        item_combo = ttk.Combobox(items_input_frame, textvariable=item_var, width=40, state='disabled')
+        item_combo.grid(row=0, column=1, padx=5, pady=5)
+    
+        ttk.Label(items_input_frame, text="Ordered:").grid(row=0, column=2, padx=5, pady=5)
+        ordered_label = ttk.Label(items_input_frame, text="0", font=('Arial', 10, 'bold'), foreground='blue')
+        ordered_label.grid(row=0, column=3, padx=5, pady=5)
         
-        ttk.Label(dialog, text="Received Quantity:").grid(row=8, column=0, padx=10, pady=8, sticky='w')
-        recv_qty_entry = ttk.Entry(dialog, width=42, state='disabled')
-        recv_qty_entry.grid(row=8, column=1, padx=10, pady=8)
+        ttk.Label(items_input_frame, text="Received:*").grid(row=1, column=0, padx=5, pady=5, sticky='w')
+        recv_entry = ttk.Entry(items_input_frame, width=15, state='disabled')
+        recv_entry.grid(row=1, column=1, padx=5, pady=5, sticky='w')
         
-        ttk.Label(dialog, text="Accepted Quantity:").grid(row=9, column=0, padx=10, pady=8, sticky='w')
-        accept_qty_entry = ttk.Entry(dialog, width=42, state='disabled')
-        accept_qty_entry.grid(row=9, column=1, padx=10, pady=8)
+        ttk.Label(items_input_frame, text="Accepted:*").grid(row=1, column=2, padx=5, pady=5)
+        accept_entry = ttk.Entry(items_input_frame, width=15, state='disabled')
+        accept_entry.grid(row=1, column=3, padx=5, pady=5)
         
-        ttk.Label(dialog, text="Rejected Quantity:").grid(row=10, column=0, padx=10, pady=8, sticky='w')
-        reject_qty_entry = ttk.Entry(dialog, width=42, state='disabled')
-        reject_qty_entry.grid(row=10, column=1, padx=10, pady=8)
+        ttk.Label(items_input_frame, text="Rejected:*").grid(row=2, column=0, padx=5, pady=5, sticky='w')
+        reject_entry = ttk.Entry(items_input_frame, width=15, state='disabled')
+        reject_entry.grid(row=2, column=1, padx=5, pady=5, sticky='w')
         
-        ttk.Label(dialog, text="Notes:").grid(row=11, column=0, padx=10, pady=8, sticky='w')
-        notes_entry = ttk.Entry(dialog, width=42, state='disabled')
-        notes_entry.grid(row=11, column=1, padx=10, pady=8)
+        ttk.Label(items_input_frame, text="Notes:").grid(row=2, column=2, padx=5, pady=5)
+        notes_entry = ttk.Entry(items_input_frame, width=30, state='disabled')
+        notes_entry.grid(row=2, column=3, padx=5, pady=5, columnspan=2)
         
-        # Store references
+        add_item_btn = ttk.Button(items_input_frame, text="➕ Add Item", state='disabled')
+        add_item_btn.grid(row=3, column=0, columnspan=4, pady=10)
+        
+        # Step 3: Items List
+        list_frame = ttk.LabelFrame(dialog, text="Step 3: Items in This Receipt", padding=10)
+        list_frame.pack(fill='both', expand=True, padx=10, pady=10)
+        
+        columns = ("Item Name", "Ordered", "Received", "Accepted", "Rejected", "Notes")
+        items_tree = ttk.Treeview(list_frame, columns=columns, show='headings', height=10)
+        
+        col_widths = [200, 80, 80, 80, 80, 200]
+        for i, col in enumerate(columns):
+                items_tree.heading(col, text=col)
+                items_tree.column(col, width=col_widths[i])
+        
+        items_tree.pack(side='left', fill='both', expand=True)
+        
+        list_scroll = ttk.Scrollbar(list_frame, orient='vertical', command=items_tree.yview)
+        list_scroll.pack(side='right', fill='y')
+        items_tree.configure(yscrollcommand=list_scroll.set)
+        
+        # Summary
+        summary_label = ttk.Label(dialog, text="Total Items: 0 | Total Received: 0 | Total Accepted: 0 | Total Rejected: 0", 
+                                font=('Arial', 11, 'bold'), foreground='blue')
+        summary_label.pack(pady=10)
+        
+        # Store data
         po_dict = {}
         item_dict = {}
+        selected_items = []  # List of tuples: (item_id, item_name, ordered_qty, recv, accept, reject, notes)
+        
+        def update_summary():
+            total_items = len(selected_items)
+            total_recv = sum(item[3] for item in selected_items)
+            total_accept = sum(item[4] for item in selected_items)
+            total_reject = sum(item[5] for item in selected_items)
+            summary_label.config(text=f"Total Items: {total_items} | Total Received: {total_recv} | Total Accepted: {total_accept} | Total Rejected: {total_reject}")
+    
         
         def on_supplier_selected(event):
-            """When supplier is selected, enable PO selection"""
+            """When supplier is selected, load their POs"""
             if not supplier_var.get():
-                return
-            
+                    return
+        
             supplier_id = supplier_dict[supplier_var.get()]
             
-            # Get POs for this supplier
             self.db.execute('''
                 SELECT po_number, order_date, status 
                 FROM Purchase_Orders 
@@ -855,8 +953,8 @@ class PurchaseModule:
                 messagebox.showinfo("Info", "No purchase orders for this supplier")
                 po_combo['state'] = 'disabled'
                 return
-            
-            po_dict.clear()
+                
+            po.clear()
             po_list = [f"PO #{po[0]} - {po[1]} ({po[2]})" for po in pos]
             for i, po in enumerate(pos):
                 po_dict[po_list[i]] = po[0]
@@ -864,17 +962,23 @@ class PurchaseModule:
             po_combo['values'] = po_list
             po_combo['state'] = 'readonly'
             po_combo.set('')
+            
+            #Reset items
             item_combo['state'] = 'disabled'
             item_combo.set('')
-        
+            selected_items.clear()
+            for item in items_tree.get_children():
+                items_tree.delete(item)
+            update_summary()
+            
         def on_po_selected(event):
-            """When PO is selected, enable item selection"""
+            """When PO is selected, load its items"""
             if not po_var.get():
                 return
-            
+        
             po_number = po_dict[po_var.get()]
-            
-            # Get items for this PO
+        
+            #Get items for this PO
             self.db.execute('''
                 SELECT poi.item_id, i.name, poi.quantity
                 FROM Purchase_Order_Items poi
@@ -889,106 +993,137 @@ class PurchaseModule:
                 return
             
             item_dict.clear()
-            item_list = [f"{item[1]} (Qty: {item[2]})" for item in items]
+            item_list = [f"{item[1]} (Ordered: {item[2]})" for item in items]
             for i, item in enumerate(items):
-                item_dict[item_list[i]] = item[0]
+                item_dict[item_list[i]] = (item[0], item[1], item[2])  # (id, name, qty)
             
             item_combo['values'] = item_list
             item_combo['state'] = 'readonly'
             item_combo.set('')
         
+            # Enable entry fields
+            recv_entry['state'] = 'normal'
+            accept_entry['state'] = 'normal'
+            reject_entry['state'] = 'normal'
+            notes_entry['state'] = 'normal'
+            add_item_btn['state'] = 'normal'
+            
         def on_item_selected(event):
-            """When item is selected, enable all receipt fields"""
+            """Show ordered quantity"""
             if item_var.get():
-                invoice_entry['state'] = 'normal'
-                date_entry['state'] = 'normal'
-                recv_qty_entry['state'] = 'normal'
-                accept_qty_entry['state'] = 'normal'
-                reject_qty_entry['state'] = 'normal'
-                notes_entry['state'] = 'normal'
+                _, _, ordered_qty = item_dict[item_var.get()]
+                ordered_label.config(text=str(ordered_qty))
+            else:
+                ordered_label.config(text="0")
         
-        def validate_quantities():
-            """Validate quantities"""
+        def validate_item_quantities():
+            """Validate item quantities"""
             try:
-                recv = int(recv_qty_entry.get())
-                accept = int(accept_qty_entry.get())
-                reject = int(reject_qty_entry.get())
+                recv = int(recv_entry.get())
+                accept = int(accept_entry.get())
+                reject = int(reject_entry.get())
                 
                 if recv <= 0:
                     messagebox.showerror("Error", "Received quantity must be positive")
-                    return False
-                
+                    return None
+            
                 if accept < 0 or reject < 0:
                     messagebox.showerror("Error", "Quantities cannot be negative")
-                    return False
+                    return None
                 
                 if accept + reject != recv:
                     messagebox.showerror("Error", f"Accepted ({accept}) + Rejected ({reject}) must equal Received ({recv})")
-                    return False
+                    return None
                 
-                return True
+                return recv, accept, reject
             except ValueError:
                 messagebox.showerror("Error", "Enter valid numbers")
-                return False
+                return None
+        
+        def add_item_to_list():
+            """Add item to receipt list"""
+            if not item_var.get():
+                messagebox.showwarning("Warning", "Select an item")
+                return
+        
+            item_id, item_name, ordered_qty = item_dict[item_var.get()]
+            
+            #Check if already added
+            for existing in selected_items:
+                if existing[0] == item_id:
+                    messagebox.showwarning("Warning", "Item already added to this receipt")
+                    return
+            
+            quantities = validate_item_quantities()
+            if not quantities:
+                return
+            
+            recv, accept, reject = quantities
+            notes = notes_entry.get().strip()
+            
+            #Add to list
+            selected_items.append((item_id, item_name, ordered_qty, recv, accept, reject, notes))
+            items_tree.insert('', 'end', values=(item_name, ordered_qty, recv, accept, reject, notes))
+            
+            #Clear inputs
+            item_var.set('')
+            ordered_label.config(text="0")
+            recv_entry.delete(0, tk.END)
+            accept_entry.delete(0, tk.END)
+            reject_entry.delete(0, tk.END)
+            notes_entry.delete(0, tk.END)
+            
+            update_summary()
+    
+        def remove_item_from_list():
+            """Remove selected item from list"""
+            selected = items_tree.selection()
+            if not selected:
+                messagebox.showwarning("Warning", "Select item to remove")
+                return
+        
+            idx = items_tree.index(selected[0])
+            selected_items.pop(idx)
+            items_tree.delete(selected[0])
+            update_summary()
         
         def save_receipt():
-            """Save the goods receipt"""
+            """Save the complete goods receipt"""
             if not supplier_var.get():
                 messagebox.showerror("Error", "Select a supplier")
                 return
             if not po_var.get():
                 messagebox.showerror("Error", "Select a purchase order")
                 return
-            if not item_var.get():
-                messagebox.showerror("Error", "Select an item")
-                return
-            if not invoice_entry.get():
+            if not invoice_entry.get().strip():
                 messagebox.showerror("Error", "Enter invoice number")
                 return
-            
-            if not validate_quantities():
+            if not selected_items:
+                messagebox.showerror("Error", "Add at least one item to the receipt")
                 return
             
             try:
                 supplier_id = supplier_dict[supplier_var.get()]
                 po_number = po_dict[po_var.get()]
-                item_id = item_dict[item_var.get()]
-                invoice_no = invoice_entry.get()
+                invoice_no = invoice_entry.get().strip()
                 receipt_date = date_entry.get()
-                recv_qty = int(recv_qty_entry.get())
-                accept_qty = int(accept_qty_entry.get())
-                reject_qty = int(reject_qty_entry.get())
-                notes = notes_entry.get()
                 
-                # Insert goods receipt
-                self.db.execute('''
-                    INSERT INTO Goods_Receipt 
-                    (po_number, item_id, supplier_id, invoice_number, received_quantity, 
-                     accepted_quantity, rejected_quantity, receipt_date, notes)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (po_number, item_id, supplier_id, invoice_no, recv_qty, accept_qty, reject_qty, receipt_date, notes))
+                #Insert all items with same invoice number
+                for item_id, item_name, ordered_qty, recv, accept, reject, notes in selected_items:
+                    self.db.execute('''
+                        INSERT INTO Goods_Receipt 
+                        (po_number, item_id, supplier_id, invoice_number, received_quantity, 
+                        accepted_quantity, rejected_quantity, receipt_date, notes)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (po_number, item_id, supplier_id, invoice_no, recv, accept, reject, receipt_date, notes))
                 
                 # Update inventory with ONLY accepted quantity
-                self.db.execute('''
-                    UPDATE Inventory 
-                    SET quantity_on_hand = quantity_on_hand + ?, 
-                        last_updated = ?
-                    WHERE item_id = ?
-                ''', (accept_qty, datetime.now(), item_id))
-                
-                # Check if all items in the PO have been received
-                self.db.execute('''
-                    SELECT quantity FROM Purchase_Order_Items
-                    WHERE po_number = ? AND item_id = ?
-                ''', (po_number, item_id))
-                ordered_qty = self.db.fetchone()[0]
-                
-                # Get total received quantity for this item in this PO
-                self.db.execute('''
-                    SELECT SUM(received_quantity) FROM Goods_Receipt
-                    WHERE po_number = ? AND item_id = ?
-                ''', (po_number, item_id))
-                total_received = self.db.fetchone()[0] or 0
+                    self.db.execute('''
+                        UPDATE Inventory 
+                        SET quantity_on_hand = quantity_on_hand + ?, 
+                            last_updated = ?
+                        WHERE item_id = ?
+                    ''', (accept, datetime.now(), item_id))
                 
                 # Check if all items in PO have been fully received
                 self.db.execute('''
@@ -1006,41 +1141,46 @@ class PurchaseModule:
                 
                 # Update PO status
                 if unreceived_items == 0:
-                    self.db.execute('''
-                        UPDATE Purchase_Orders 
-                        SET status = 'Completed'
-                        WHERE po_number = ?
-                    ''', (po_number,))
+                    self.db.execute('UPDATE Purchase_Orders SET status = "Completed" WHERE po_number = ?', (po_number,))
                 else:
-                    self.db.execute('''
-                        UPDATE Purchase_Orders 
-                        SET status = 'Partially Received'
-                        WHERE po_number = ?
-                    ''', (po_number,))
+                    self.db.execute('UPDATE Purchase_Orders SET status = "Partially Received" WHERE po_number = ?', (po_number,))
                 
                 self.db.commit()
                 
-                msg = f"Goods receipt recorded!\n\n"
-                msg += f"Received: {recv_qty} units\n"
-                msg += f"Accepted: {accept_qty} units (added to inventory)\n"
-                msg += f"Rejected: {reject_qty} units (for return)"
+                #Summary message
+                total_recv = sum(item[3] for item in selected_items)
+                total_accept = sum(item[4] for item in selected_items)
+                total_reject = sum(item[5] for item in selected_items)
+                
+                msg = f"Goods Receipt Recorded Successfully!\n\n"
+                msg += f"Invoice: {invoice_no}\n"
+                msg += f"Items: {len(selected_items)}\n"
+                msg += f"Total Received: {total_recv} units\n"
+                msg += f"Total Accepted: {total_accept} units (added to inventory)\n"
+                msg += f"Total Rejected: {total_reject} units\n"
                 
                 messagebox.showinfo("Success", msg)
                 dialog.destroy()
                 self.app.refresh_all_tabs()
                 
             except Exception as e:
-                messagebox.showerror("Error", f"Failed: {str(e)}")
-        
-        # Bind events
+                messagebox.showerror("Error", f"Failed to save receipt: {str(e)}")
+    
+        #Bind events
         supplier_combo.bind('<<ComboboxSelected>>', on_supplier_selected)
         po_combo.bind('<<ComboboxSelected>>', on_po_selected)
         item_combo.bind('<<ComboboxSelected>>', on_item_selected)
+        add_item_btn.config(command=add_item_to_list)
         
-        # Save button
-        ttk.Button(dialog, text="Save Receipt", command=save_receipt).grid(row=12, column=0, columnspan=2, pady=20)
-# ==================== ALERTS TAB ====================
-    
+        #Buttons frame
+        btn_frame = ttk.Frame(dialog)
+        btn_frame.pack(fill='x', padx=10, pady=10)
+        
+        ttk.Button(btn_frame, text="➖ Remove Selected Item", command=remove_item_from_list).pack(side='left', padx=5)
+        ttk.Button(btn_frame, text="✅ Save Receipt", command=save_receipt).pack(side='right', padx=5)
+        ttk.Button(btn_frame, text="❌ Cancel", command=dialog.destroy).pack(side='right', padx=5)
+        # ==================== ALERTS TAB ====================
+        
     def create_alerts_tab(self):
         """Create alerts/reports tab"""
         alert_frame = ttk.Frame(self.notebook)
