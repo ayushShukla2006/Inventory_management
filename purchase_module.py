@@ -12,6 +12,7 @@ class PurchaseModule:
         self.notebook = notebook
         self.db = db
         self.app = app
+        self.show_completed_pos = False
         self.create_inventory_tab()
         self.create_purchase_order_tab()
         self.create_suppliers_tab()
@@ -338,6 +339,8 @@ class PurchaseModule:
         ttk.Button(top_btn_frame, text="➕ Create PO", command=self.create_purchase_order).pack(side='left', padx=3)
         ttk.Button(top_btn_frame, text="👁️ View Details", command=self.view_po_details).pack(side='left', padx=3)
         ttk.Button(top_btn_frame, text="🗑️ Delete PO", command=self.delete_purchase_order).pack(side='left', padx=3)
+        self.toggle_completed_btn = ttk.Button(top_btn_frame, text = "👁️ Show Completed", command=self.toggle_completed_orders)
+        self.toggle_completed_btn.pack(side='left', padx=3)
         ttk.Button(top_btn_frame, text="🔄 Refresh", command=self.refresh_purchase_orders).pack(side='right', padx=3)
         columns = ("PO#", "Supplier", "Order Date", "Delivery", "Status", "Subtotal", "GST", "Total", "Items")
         self.po_tree = ttk.Treeview(po_frame, columns=columns, show='headings', height=25)
@@ -351,17 +354,46 @@ class PurchaseModule:
         self.po_tree.configure(yscrollcommand=scrollbar.set)
         self.refresh_purchase_orders()
     
+    def toggle_completed_orders(self):
+        """Toggle between showing and hiding completed orders"""
+        self.show_completed_pos = not self.show_completed_pos
+        if self.show_completed_pos:
+            self.toggle_completed_btn.config(text="🚫 Hide Completed")
+        else:
+            self.toggle_completed_btn.config(text="👁️ Show Completed")
+        self.refresh_purchase_orders()
+    
     def refresh_purchase_orders(self):
         for item in self.po_tree.get_children():
             self.po_tree.delete(item)
-        self.db.execute('''SELECT po.po_number, s.name, po.order_date, po.expected_delivery, po.status, 
-            po.subtotal, po.total_gst, po.total_amount,
-            (SELECT COUNT(*) FROM Purchase_Order_Items WHERE po_number = po.po_number) as item_count
-            FROM Purchase_Orders po JOIN Suppliers s ON po.supplier_id = s.supplier_id ORDER BY po.po_number''')
+    
+        # Build query based on filter
+        if self.show_completed_pos:
+            query = '''SELECT po.po_number, s.name, po.order_date, po.expected_delivery, po.status, 
+                po.subtotal, po.total_gst, po.total_amount,
+                (SELECT COUNT(*) FROM Purchase_Order_Items WHERE po_number = po.po_number) as item_count
+                FROM Purchase_Orders po JOIN Suppliers s ON po.supplier_id = s.supplier_id 
+                ORDER BY po.po_number DESC'''
+        else:
+            query = '''SELECT po.po_number, s.name, po.order_date, po.expected_delivery, po.status, 
+                po.subtotal, po.total_gst, po.total_amount,
+                (SELECT COUNT(*) FROM Purchase_Order_Items WHERE po_number = po.po_number) as item_count
+                FROM Purchase_Orders po JOIN Suppliers s ON po.supplier_id = s.supplier_id 
+                WHERE po.status != 'Completed'
+                ORDER BY po.po_number DESC'''
+    
+        self.db.execute(query)
         for row in self.db.fetchall():
             display_row = (row[0], row[1], row[2], row[3], row[4], 
                           f"₹{row[5]:.2f}", f"₹{row[6]:.2f}", f"₹{row[7]:.2f}", row[8])
-            self.po_tree.insert('', 'end', values=display_row)
+            # Optionally color completed orders differently
+            if row[4] == "Completed":
+                self.po_tree.insert('', 'end', values=display_row, tags=('completed',))
+            else:
+                self.po_tree.insert('', 'end', values=display_row)
+    
+        # Configure tag for completed orders (grayed out)
+        self.po_tree.tag_configure('completed', background='#e8e8e8', foreground='#666666')
     
     def create_purchase_order(self):
         self.db.execute("SELECT COUNT(*) FROM Suppliers")
@@ -833,38 +865,169 @@ class PurchaseModule:
 
         values = self.receipt_tree.item(selected[0])['values']
         invoice_number = values[3]
+        po_number = values[1]
         
-        # Fetch all rows
+        # Fetch all rows with ordered quantities
         self.db.execute("""
             SELECT gr.receipt_id, gr.item_id, i.name,
                 gr.received_quantity, gr.accepted_quantity, gr.rejected_quantity, gr.notes,
-                poi.ordered_quantity
+                poi.quantity as ordered_quantity, gr.po_number
             FROM Goods_Receipt gr
             JOIN Items i ON i.item_id = gr.item_id
-            JOIN Purchase_Order_Items poi ON poi.item_id = gr.item_id
+            JOIN Purchase_Order_Items poi ON poi.item_id = gr.item_id AND poi.po_number = gr.po_number
             WHERE gr.invoice_number = ?
         """, (invoice_number,))
         rows = self.db.fetchall()
 
+        if not rows:
+            messagebox.showerror("Error", "Receipt data not found")
+            return
 
         dialog = tk.Toplevel(self.app.root)
         dialog.title(f"Edit Receipt - Invoice {invoice_number}")
-        dialog.geometry("900x600")
+        dialog.geometry("1100x700")
         dialog.transient(self.app.root)
         dialog.grab_set()
 
-        frame = ttk.LabelFrame(dialog, text="Edit Items", padding=10)
+        # Header info
+        info_frame = ttk.LabelFrame(dialog, text="Receipt Information", padding=10)
+        info_frame.pack(fill='x', padx=10, pady=10)
+        ttk.Label(info_frame, text=f"Invoice: {invoice_number}  |  PO #: {po_number}  |  Supplier: {values[2]}", 
+                 font=('Arial', 11, 'bold')).pack()
+
+        # Instructions
+        inst_frame = ttk.Frame(dialog)
+        inst_frame.pack(fill='x', padx=10, pady=5)
+        ttk.Label(inst_frame, text="ℹ️ Double-click any cell to edit. Press Enter or click outside to save.", 
+                 font=('Arial', 9), foreground='blue').pack()
+
+        frame = ttk.LabelFrame(dialog, text="Edit Items (Double-click to edit)", padding=10)
         frame.pack(fill='both', expand=True, padx=10, pady=10)
 
-        columns = ("Item", "Received", "Accepted", "Rejected", "Notes")
+        columns = ("Item", "Ordered", "Received", "Accepted", "Rejected", "Notes")
         tree = ttk.Treeview(frame, columns=columns, show='headings', height=12)
-        for col in columns:
+        
+        col_widths = [250, 80, 100, 100, 100, 200]
+        for i, col in enumerate(columns):
             tree.heading(col, text=col)
-            tree.column(col, width=150)
-        tree.pack(fill='both', expand=True)
+            tree.column(col, width=col_widths[i])
+        
+        scrollbar = ttk.Scrollbar(frame, orient='vertical', command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+        tree.pack(side='left', fill='both', expand=True)
+        scrollbar.pack(side='right', fill='y')
+
+        # Store original data for validation
+        item_data = {}  # {tree_item_id: (rec_id, item_id, ordered_qty, old_recv, old_acc, old_rej)}
+        
+        # Load data
+        for rec_id, item_id, name, recv, acc, rej, notes, ordered_qty, _ in rows:
+            tree_id = tree.insert("", "end", values=(name, ordered_qty, recv, acc, rej, notes or ""))
+            item_data[tree_id] = (rec_id, item_id, ordered_qty, recv, acc, rej)
+
+        # Variable to track currently editing entry
+        current_entry = None
+        
+        def validate_and_update_cell(tree_id, col_num, new_value):
+            """Validate input and update cell"""
+            try:
+                current_values = list(tree.item(tree_id)["values"])
+                rec_id, item_id, ordered_qty, old_recv, old_acc, old_rej = item_data[tree_id]
+                
+                # Column 1: Ordered (read-only, shown for reference)
+                if col_num == 1:
+                    messagebox.showinfo("Info", "Ordered quantity cannot be edited")
+                    return False
+                
+                # Columns 2-4: Received, Accepted, Rejected (must be integers)
+                if col_num in (2, 3, 4):
+                    try:
+                        new_value = int(new_value)
+                        if new_value < 0:
+                            messagebox.showerror("Error", "Quantity cannot be negative")
+                            return False
+                    except ValueError:
+                        messagebox.showerror("Error", "Quantity must be a whole number")
+                        return False
+                    
+                    # Validate received quantity doesn't exceed ordered
+                    if col_num == 2:  # Received
+                        if new_value > ordered_qty:
+                            messagebox.showerror("Error", 
+                                f"Received quantity ({new_value}) cannot exceed ordered quantity ({ordered_qty})")
+                            return False
+                        # Auto-adjust accepted/rejected if received changes
+                        current_values[2] = new_value
+                        accepted = current_values[3]
+                        if isinstance(accepted, str):
+                            try:
+                                accepted = int(accepted)
+                            except:
+                                accepted = 0
+                        if accepted > new_value:
+                            current_values[3] = new_value
+                            current_values[4] = 0
+                        else:
+                            current_values[4] = new_value - accepted
+                    
+                    # Validate accepted doesn't exceed received
+                    elif col_num == 3:  # Accepted
+                        received = current_values[2]
+                        if isinstance(received, str):
+                            try:
+                                received = int(received)
+                            except:
+                                received = 0
+                        if new_value > received:
+                            messagebox.showerror("Error", 
+                                f"Accepted quantity ({new_value}) cannot exceed received quantity ({received})")
+                            return False
+                        current_values[3] = new_value
+                        current_values[4] = received - new_value
+                    
+                    # Rejected is auto-calculated but can be manually adjusted
+                    elif col_num == 4:  # Rejected
+                        received = current_values[2]
+                        if isinstance(received, str):
+                            try:
+                                received = int(received)
+                            except:
+                                received = 0
+                        accepted = current_values[3]
+                        if isinstance(accepted, str):
+                            try:
+                                accepted = int(accepted)
+                            except:
+                                accepted = 0
+                        if accepted + new_value != received:
+                            messagebox.showerror("Error", 
+                                f"Accepted ({accepted}) + Rejected ({new_value}) must equal Received ({received})")
+                            return False
+                        current_values[4] = new_value
+                
+                # Column 5: Notes (string, no validation)
+                elif col_num == 5:
+                    current_values[5] = new_value
+                
+                tree.item(tree_id, values=current_values)
+                return True
+                
+            except Exception as e:
+                messagebox.showerror("Error", f"Validation failed: {str(e)}")
+                return False
         
         def edit_cell(event):
             """Double-click → edit Treeview cell"""
+            nonlocal current_entry
+            
+            # Close existing entry if any
+            if current_entry:
+                try:
+                    current_entry.destroy()
+                except:
+                    pass
+                current_entry = None
+            
             region = tree.identify("region", event.x, event.y)
             if region != "cell":
                 return
@@ -875,71 +1038,90 @@ class PurchaseModule:
             if not row_id or not col_id:
                 return
 
-            # Column index
             col_num = int(col_id.replace("#", "")) - 1
 
-            # Only allow editing for Received / Accepted / Rejected / Notes
-            if col_num == 0:
-                return  # Item name is not editable
+            # Column 0 (Item name) and Column 1 (Ordered) are not editable
+            if col_num in (0, 1):
+                if col_num == 1:
+                    messagebox.showinfo("Info", "Ordered quantity is for reference only and cannot be edited")
+                return
 
-            x, y, width, height = tree.bbox(row_id, col_id)
-            value = tree.item(row_id)["values"][col_num]
+            try:
+                x, y, width, height = tree.bbox(row_id, col_id)
+            except:
+                return
+            
+            current_value = tree.item(row_id)["values"][col_num]
 
             # Create entry box
-            entry = tk.Entry(tree)
-            entry.insert(0, value)
+            entry = ttk.Entry(tree, font=('Arial', 10))
+            entry.insert(0, str(current_value))
+            entry.select_range(0, tk.END)
             entry.place(x=x, y=y, width=width, height=height)
-
             entry.focus()
+            current_entry = entry
 
-            def save_edit(event):
+            def save_edit(event=None):
+                nonlocal current_entry
                 new_value = entry.get()
                 entry.destroy()
+                current_entry = None
+                validate_and_update_cell(row_id, col_num, new_value)
 
-                # Prevent bad values
-                if col_num in (1, 2, 3):  # received, accepted, rejected
-                    try:
-                        new_value = int(new_value)
-                    except:
-                        messagebox.showerror("Error", "Quantity must be a number")
-                        return
-
-                values = list(tree.item(row_id)["values"])
-                values[col_num] = new_value
-                tree.item(row_id, values=values)
+            def cancel_edit(event):
+                nonlocal current_entry
+                entry.destroy()
+                current_entry = None
 
             entry.bind("<Return>", save_edit)
             entry.bind("<FocusOut>", save_edit)
-
+            entry.bind("<Escape>", cancel_edit)
         
         tree.bind("<Double-1>", edit_cell)
 
-        # Load data
-        editable = []
-        for rec_id, item_id, name, recv, acc, rej, notes in rows:
-            editable.append([rec_id, item_id, name, recv, acc, rej, notes])
-            tree.insert("", "end", values=(name, recv, acc, rej, notes))
-
+        # Summary label
+        summary_label = ttk.Label(dialog, text="", font=('Arial', 10, 'bold'), foreground='blue')
+        summary_label.pack(pady=5)
+        
+        def update_summary():
+            total_recv = sum(int(tree.item(child)["values"][2]) for child in tree.get_children())
+            total_acc = sum(int(tree.item(child)["values"][3]) for child in tree.get_children())
+            total_rej = sum(int(tree.item(child)["values"][4]) for child in tree.get_children())
+            summary_label.config(text=f"Total - Received: {total_recv} | Accepted: {total_acc} | Rejected: {total_rej}")
+        
+        update_summary()
         
         def save_changes():
             try:
                 children = tree.get_children()
-                for idx, child in enumerate(children):
-                    name, recv, acc, rej, notes = tree.item(child)["values"]
+                updates = []
+                
+                for tree_id in children:
+                    values = tree.item(tree_id)["values"]
+                    name, ordered, recv, acc, rej, notes = values
+                    
                     recv = int(recv)
                     acc = int(acc)
                     rej = int(rej)
-
-                    if recv != acc + rej:
-                        messagebox.showerror("Error", "Accepted + Rejected must equal Received")
+                    
+                    # Final validation
+                    if recv > ordered:
+                        messagebox.showerror("Error", f"{name}: Received ({recv}) exceeds Ordered ({ordered})")
+                        return
+                    
+                    if acc + rej != recv:
+                        messagebox.showerror("Error", f"{name}: Accepted ({acc}) + Rejected ({rej}) must equal Received ({recv})")
                         return
 
-                    rec_id, item_id, _, old_recv, old_acc, old_rej, _ = editable[idx]
-
-                    # Calculate inventory correction:
-                    diff = acc - old_acc  # only accepted affects inventory
+                    rec_id, item_id, _, old_recv, old_acc, old_rej = item_data[tree_id]
+                    
+                    # Calculate inventory adjustment (only accepted affects inventory)
+                    diff = acc - old_acc
+                    
+                    updates.append((recv, acc, rej, notes, rec_id, item_id, diff))
                 
-                    # Update GR row
+                # Apply all updates
+                for recv, acc, rej, notes, rec_id, item_id, diff in updates:
                     self.db.execute("""
                         UPDATE Goods_Receipt
                         SET received_quantity=?, accepted_quantity=?, rejected_quantity=?, notes=?
@@ -955,15 +1137,20 @@ class PurchaseModule:
                         """, (diff, datetime.now(), item_id))
 
                 self.db.commit()
-                messagebox.showinfo("Success", "Receipt updated successfully!")
+                messagebox.showinfo("Success", f"Receipt updated successfully!\n{len(updates)} item(s) updated.")
                 dialog.destroy()
                 self.app.refresh_all_tabs()
 
             except Exception as e:
-                messagebox.showerror("Error", f"Failed: {e}")
+                self.db.rollback()
+                messagebox.showerror("Error", f"Failed to save changes: {str(e)}")
 
-        ttk.Button(dialog, text="💾 Save Changes", command=save_changes).pack(pady=10)
-
+        # Buttons
+        btn_frame = ttk.Frame(dialog)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="💾 Save All Changes", command=save_changes, width=20).pack(side='left', padx=5)
+        ttk.Button(btn_frame, text="❌ Cancel", command=dialog.destroy, width=15).pack(side='left', padx=5)
+        ttk.Button(btn_frame, text="🔄 Refresh Summary", command=update_summary, width=18).pack(side='left', padx=5)
     
     def new_goods_receipt(self):
         """Create new goods receipt - multi-item"""
@@ -1191,6 +1378,13 @@ class PurchaseModule:
                 if accept + reject != recv:
                     messagebox.showerror("Error", f"Accepted ({accept}) + Rejected ({reject}) must equal Received ({recv})")
                     return None
+                
+                # Validate against ordered quantity
+                if item_var.get():
+                    _, _, ordered_qty = item_dict[item_var.get()]
+                    if recv > ordered_qty:
+                        messagebox.showerror("Error", f"Received quantity ({recv}) cannot exceed ordered quantity ({ordered_qty})")
+                        return None
                 
                 return recv, accept, reject
             except ValueError:
