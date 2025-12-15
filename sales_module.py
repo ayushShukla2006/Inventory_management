@@ -1100,10 +1100,10 @@ class SalesModule:
                           f"₹{row[5]:.2f}", f"₹{row[6]:.2f}", f"₹{row[7]:.2f}", row[8])
             self.inv_tree.insert('', 'end', values=display_row)
     
-        if row[8] == "Paid":
-            self.inv_tree.insert('', 'end', values=display_row, tags=('paid',))
-        else:
-            self.inv_tree.insert('', 'end', values=display_row, tags=('unpaid',))
+            if row[8] == "Paid":
+                self.inv_tree.insert('', 'end', values=display_row, tags=('paid',))
+            else:
+                self.inv_tree.insert('', 'end', values=display_row, tags=('unpaid',))
     
         self.inv_tree.tag_configure('paid', background='#d4edda', foreground='#155724')  # Light green
         self.inv_tree.tag_configure('unpaid', background='#f8d7da', foreground='#721c24')  # Light red
