@@ -141,4 +141,7 @@ The application will initialize the database automatically and launch the GUI.
 ![screenshot3](screenshots/APPFINAL3.png)
 ![screenshot4](screenshots/APPFINAL4.png)
 ![screenshot5](screenshots/APPFINAL5.png)
-![screenshot6](screenshots/APPFINAL6.png)
+![screenshot6](screenshots/APPFINAL7.png)
+![screenshot7](screenshots/APPFINAL6.png)
+![screenshot8](screenshots/APPFINAL8.png)
+![screenshot9](screenshots/APPFINAL9.png)
