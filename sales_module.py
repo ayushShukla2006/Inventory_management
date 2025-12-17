@@ -1294,16 +1294,16 @@ class SalesModule:
         self.refresh_gst_summary()
 
     def refresh_gst_summary(self):
-        """Refresh the complete GST summary with improved formatting"""
+        """Refresh GST summary with HORIZONTAL layout"""
         # Clear existing content
         for widget in self.gst_scrollable_frame.winfo_children():
             widget.destroy()
     
-        # ========== OUTPUT GST (from Sales Orders) ==========
+        # Get data
         self.db.execute('''
             SELECT 
                 soi.gst_percent,
-                COALESCE(SUM(soi.gst_amount), 0) as total_gst_collected,
+                    COALESCE(SUM(soi.gst_amount), 0) as total_gst_collected,
                 COALESCE(SUM(soi.rate * soi.quantity), 0) as total_base_amount,
                 COUNT(DISTINCT so.so_number) as order_count,
                 COUNT(*) as item_count
@@ -1312,17 +1312,9 @@ class SalesModule:
             GROUP BY soi.gst_percent
             ORDER BY soi.gst_percent
         ''')
+        output_gst_data = {row[0]: {'gst': row[1], 'base': row[2], 'orders': row[3], 'items': row[4]} 
+                           for row in self.db.fetchall()}
     
-        output_gst_data = {}
-        for row in self.db.fetchall():
-            output_gst_data[row[0]] = {
-                'gst': row[1],
-                'base': row[2],
-                'orders': row[3],
-                'items': row[4]
-            }
-    
-        # ========== INPUT GST (from Purchase Orders) ==========
         self.db.execute('''
             SELECT 
                 poi.gst_percent,
@@ -1335,286 +1327,213 @@ class SalesModule:
             GROUP BY poi.gst_percent
             ORDER BY poi.gst_percent
         ''')
+        input_gst_data = {row[0]: {'gst': row[1], 'base': row[2], 'orders': row[3], 'items': row[4]} 
+                          for row in self.db.fetchall()}
     
-        input_gst_data = {}
-        for row in self.db.fetchall():
-            input_gst_data[row[0]] = {
-                'gst': row[1],
-                'base': row[2],
-                'orders': row[3],
-                'items': row[4]
-            }
-    
-    #========== GET ALL UNIQUE GST RATES ==========
         all_gst_rates = sorted(set(list(output_gst_data.keys()) + list(input_gst_data.keys())))
     
         if all_gst_rates:
-            # ========== COLOR LEGEND ==========
-            legend_frame = ttk.LabelFrame(self.gst_scrollable_frame, text="Color Legend", padding=15)
-            legend_frame.pack(fill='x', pady=(0, 20))
+            # === COLOR LEGEND - HORIZONTAL ===
+            legend_frame = ttk.LabelFrame(self.gst_scrollable_frame, text="Color Legend", padding=10)
+            legend_frame.pack(fill='x', pady=(0, 15))
+        
+            legend_container = ttk.Frame(legend_frame)
+            legend_container.pack()
         
             legend_items = [
-                ("● 0%", '#666666'),
-                ("● 1-5%", '#28a745'),
-                ("● 6-12%", '#17a2b8'),
-                ("● 13-18%", '#ffc107'),
-                ("● 19%+", '#dc3545')
+                ("● 0%", '#666666'), ("● 1-5%", '#28a745'), ("● 6-12%", '#17a2b8'),
+                ("● 13-18%", '#ffc107'), ("● 19%+", '#dc3545')
             ]
         
             for text, color in legend_items:
-                ttk.Label(legend_frame, text=text, font=('Arial', 10, 'bold'), 
+                ttk.Label(legend_container, text=text, font=('Arial', 10, 'bold'), 
                     foreground=color).pack(side='left', padx=15)
+            
+            # === QUICK SUMMARY - HORIZONTAL CARDS ===
+            total_output_gst = sum(d['gst'] for d in output_gst_data.values())
+            total_input_gst = sum(d['gst'] for d in input_gst_data.values())
+            net_gst = total_output_gst - total_input_gst
+            
+            summary_section = ttk.LabelFrame(self.gst_scrollable_frame, 
+                text="📊 GST Quick Summary", padding=20)
+            summary_section.pack(fill='x', pady=(0, 15))
         
-            ttk.Label(legend_frame, text="(Higher rates = warmer colors)", 
-                font=('Arial', 9), foreground='gray').pack(side='left', padx=10)
+            summary_cards = ttk.Frame(summary_section)
+            summary_cards.pack(fill='x')
+            
+            # Configure grid for equal spacing
+            for i in range(4):
+                summary_cards.grid_columnconfigure(i, weight=1)
         
-            # ========== OUTPUT GST SECTION ==========
-            output_section = ttk.LabelFrame(self.gst_scrollable_frame, 
-                text="📤 OUTPUT GST - Collected from Sales (What customers paid you)", 
-                padding=20)
-            output_section.pack(fill='x', pady=(0, 20))
+            # Card 1: Output GST
+            card1 = ttk.Frame(summary_cards, relief='solid', borderwidth=2)
+            card1.grid(row=0, column=0, padx=10, pady=10, sticky='nsew')
+            ttk.Label(card1, text="Output GST", font=('Arial', 10), 
+                foreground='gray').pack(pady=(15, 5))
+            ttk.Label(card1, text=f"₹{total_output_gst:,.2f}", font=('Arial', 16, 'bold'), 
+                foreground='green').pack(pady=(0, 5))
+            ttk.Label(card1, text="Collected from Sales", font=('Arial', 8), 
+                foreground='gray').pack(pady=(0, 15))
         
-            # Create table-like header
-            header_frame = ttk.Frame(output_section)
+            # Card 2: Input GST
+            card2 = ttk.Frame(summary_cards, relief='solid', borderwidth=2)
+            card2.grid(row=0, column=1, padx=10, pady=10, sticky='nsew')
+            ttk.Label(card2, text="Input GST", font=('Arial', 10), 
+                foreground='gray').pack(pady=(15, 5))
+            ttk.Label(card2, text=f"₹{total_input_gst:,.2f}", font=('Arial', 16, 'bold'), 
+                foreground='orange').pack(pady=(0, 5))
+            ttk.Label(card2, text="Paid on Purchases", font=('Arial', 8), 
+                foreground='gray').pack(pady=(0, 15))
+        
+            # Card 3: Net Liability
+            card3 = ttk.Frame(summary_cards, relief='solid', borderwidth=2)
+            card3.grid(row=0, column=2, padx=10, pady=10, sticky='nsew')
+            ttk.Label(card3, text="Net GST Liability", font=('Arial', 10), 
+                foreground='gray').pack(pady=(15, 5))
+            net_color = '#dc3545' if net_gst > 0 else ('#28a745' if net_gst < 0 else '#17a2b8')
+            ttk.Label(card3, text=f"₹{net_gst:,.2f}", font=('Arial', 16, 'bold'), 
+                foreground=net_color).pack(pady=(0, 5))
+            status_text = "To Pay" if net_gst > 0 else ("Refund" if net_gst < 0 else "Balanced")
+            ttk.Label(card3, text=status_text, font=('Arial', 8), 
+                foreground=net_color).pack(pady=(0, 15))
+        
+            # Card 4: Total Orders
+            total_orders = sum(d['orders'] for d in output_gst_data.values())
+            card4 = ttk.Frame(summary_cards, relief='solid', borderwidth=2)
+            card4.grid(row=0, column=3, padx=10, pady=10, sticky='nsew')
+            ttk.Label(card4, text="Sales Orders", font=('Arial', 10), 
+                foreground='gray').pack(pady=(15, 5))
+            ttk.Label(card4, text=str(total_orders), font=('Arial', 16, 'bold'), 
+                foreground='blue').pack(pady=(0, 5))
+            ttk.Label(card4, text="With GST", font=('Arial', 8), 
+                foreground='gray').pack(pady=(0, 15))
+        
+            # === TAX BRACKET COMPARISON - SIDE BY SIDE ===
+            comparison_section = ttk.LabelFrame(self.gst_scrollable_frame, 
+            text="📊 Tax Bracket Comparison (Output vs Input)", padding=20)
+            comparison_section.pack(fill='x', pady=(0, 15))
+        
+            # Header row
+            header_frame = ttk.Frame(comparison_section)
             header_frame.pack(fill='x', pady=(0, 10))
         
             headers = [
-                ("Rate", 100),
-                ("Base Amount", 150),
-                ("GST Collected", 150),
-                ("Orders", 100),
-                ("Items", 100)
+                ("Rate", 8), ("Output GST", 15), ("Input GST", 15), 
+                ("Net", 12), ("Orders (Out)", 10), ("Orders (In)", 10)
             ]
         
             for text, width in headers:
-                label = ttk.Label(header_frame, text=text, font=('Arial', 11, 'bold'))
-                label.pack(side='left', padx=10)
-                label.config(width=width//10)  # Approximate width
+                ttk.Label(header_frame, text=text, font=('Arial', 10, 'bold'), 
+                    width=width).pack(side='left', padx=8)
         
-            ttk.Separator(output_section, orient='horizontal').pack(fill='x', pady=10)
+            ttk.Separator(comparison_section, orient='horizontal').pack(fill='x', pady=5)
         
-            total_output_base = 0
-            total_output_gst = 0
-        
-            for gst_rate in all_gst_rates:
-                if gst_rate in output_gst_data:
-                    data = output_gst_data[gst_rate]
-                    total_output_base += data['base']
-                    total_output_gst += data['gst']
-                
-                    # Determine color
-                    color = self._get_gst_color(gst_rate)
-                
-                    row_frame = ttk.Frame(output_section)
-                    row_frame.pack(fill='x', pady=5)
-                    
-                    ttk.Label(row_frame, text=f"{gst_rate:.1f}%", 
-                        font=('Arial', 11, 'bold'), foreground=color, width=10).pack(side='left', padx=10)
-                    ttk.Label(row_frame, text=f"₹{data['base']:,.2f}", 
-                        font=('Arial', 11), width=15).pack(side='left', padx=10)
-                    ttk.Label(row_frame, text=f"₹{data['gst']:,.2f}", 
-                        font=('Arial', 11, 'bold'), foreground=color, width=15).pack(side='left', padx=10)
-                    ttk.Label(row_frame, text=str(data['orders']), 
-                        font=('Arial', 11), width=10).pack(side='left', padx=10)
-                    ttk.Label(row_frame, text=str(data['items']), 
-                        font=('Arial', 11), width=10).pack(side='left', padx=10)
-        
-            # Total row
-            ttk.Separator(output_section, orient='horizontal').pack(fill='x', pady=10)
-        
-            total_frame = ttk.Frame(output_section)
-            total_frame.pack(fill='x', pady=10)
-        
-            ttk.Label(total_frame, text="TOTAL", 
-                font=('Arial', 12, 'bold'), width=10).pack(side='left', padx=10)
-            ttk.Label(total_frame, text=f"₹{total_output_base:,.2f}", 
-                font=('Arial', 12, 'bold'), foreground='blue', width=15).pack(side='left', padx=10)
-            ttk.Label(total_frame, text=f"₹{total_output_gst:,.2f}", 
-                font=('Arial', 12, 'bold'), foreground='green', width=15).pack(side='left', padx=10)
-        
-            if not output_gst_data:
-                ttk.Label(output_section, text="No sales data yet", 
-                    font=('Arial', 11), foreground='gray').pack(pady=20)
-        
-            # ========== INPUT GST SECTION ==========
-            input_section = ttk.LabelFrame(self.gst_scrollable_frame, 
-                text="📥 INPUT GST - Paid on Purchases (What you paid to suppliers)", 
-                padding=20)
-            input_section.pack(fill='x', pady=(0, 20))
-            
-            # Header
-            header_frame = ttk.Frame(input_section)
-            header_frame.pack(fill='x', pady=(0, 10))
-        
-            for text, width in headers:
-                label = ttk.Label(header_frame, text=text, font=('Arial', 11, 'bold'))
-                label.pack(side='left', padx=10)
-                label.config(width=width//10)
-        
-            ttk.Separator(input_section, orient='horizontal').pack(fill='x', pady=10)
-        
-            total_input_base = 0
-            total_input_gst = 0
-        
-            for gst_rate in all_gst_rates:
-                if gst_rate in input_gst_data:
-                    data = input_gst_data[gst_rate]
-                    total_input_base += data['base']
-                    total_input_gst += data['gst']
-                
-                    color = self._get_gst_color(gst_rate)
-                
-                    row_frame = ttk.Frame(input_section)
-                    row_frame.pack(fill='x', pady=5)
-                    
-                    ttk.Label(row_frame, text=f"{gst_rate:.1f}%", 
-                        font=('Arial', 11, 'bold'), foreground=color, width=10).pack(side='left', padx=10)
-                    ttk.Label(row_frame, text=f"₹{data['base']:,.2f}", 
-                        font=('Arial', 11), width=15).pack(side='left', padx=10)
-                    ttk.Label(row_frame, text=f"₹{data['gst']:,.2f}", 
-                        font=('Arial', 11, 'bold'), foreground=color, width=15).pack(side='left', padx=10)
-                    ttk.Label(row_frame, text=str(data['orders']), 
-                        font=('Arial', 11), width=10).pack(side='left', padx=10)
-                    ttk.Label(row_frame, text=str(data['items']), 
-                        font=('Arial', 11), width=10).pack(side='left', padx=10)
-        
-            # Total row
-            ttk.Separator(input_section, orient='horizontal').pack(fill='x', pady=10)
-        
-            total_frame = ttk.Frame(input_section)
-            total_frame.pack(fill='x', pady=10)
-        
-            ttk.Label(total_frame, text="TOTAL", 
-                font=('Arial', 12, 'bold'), width=10).pack(side='left', padx=10)
-            ttk.Label(total_frame, text=f"₹{total_input_base:,.2f}", 
-                font=('Arial', 12, 'bold'), foreground='blue', width=15).pack(side='left', padx=10)
-            ttk.Label(total_frame, text=f"₹{total_input_gst:,.2f}", 
-                font=('Arial', 12, 'bold'), foreground='orange', width=15).pack(side='left', padx=10)
-        
-            if not input_gst_data:
-                ttk.Label(input_section, text="No purchase data yet", 
-                    font=('Arial', 11), foreground='gray').pack(pady=20)
-            
-            # ========== NET GST LIABILITY ==========
-            net_gst = total_output_gst - total_input_gst
-        
-            net_section = ttk.LabelFrame(self.gst_scrollable_frame, 
-                text="💰 NET GST LIABILITY (For Government Filing)", 
-                padding=25)
-            net_section.pack(fill='x', pady=(0, 20))
-        
-            # Calculation display
-            calc_frame = ttk.Frame(net_section)
-            calc_frame.pack(fill='x', pady=15)
-        
-            ttk.Label(calc_frame, text="Output GST (Collected):", 
-                font=('Arial', 12)).pack(side='left', padx=15)
-            ttk.Label(calc_frame, text=f"₹{total_output_gst:,.2f}", 
-                font=('Arial', 12, 'bold'), foreground='green').pack(side='left', padx=10)
-        
-            ttk.Label(calc_frame, text="  −  ", 
-                font=('Arial', 14, 'bold')).pack(side='left', padx=15)
-        
-            ttk.Label(calc_frame, text="Input GST (Paid):", 
-                font=('Arial', 12)).pack(side='left', padx=15)
-            ttk.Label(calc_frame, text=f"₹{total_input_gst:,.2f}", 
-                font=('Arial', 12, 'bold'), foreground='orange').pack(side='left', padx=10)
-        
-            ttk.Label(calc_frame, text="  =  ", 
-                font=('Arial', 14, 'bold')).pack(side='left', padx=15)
-        
-            ttk.Separator(net_section, orient='horizontal').pack(fill='x', pady=20)
-        
-            # Net amount - BIG DISPLAY
-            result_frame = ttk.Frame(net_section)
-            result_frame.pack(fill='x', pady=20)
-        
-            if net_gst > 0:
-                ttk.Label(result_frame, text="GST PAYABLE TO GOVERNMENT:", 
-                    font=('Arial', 16, 'bold')).pack(pady=8)
-                ttk.Label(result_frame, text=f"₹{net_gst:,.2f}", 
-                    font=('Arial', 24, 'bold'), foreground='#dc3545').pack(pady=8)
-            
-                info_text = "✓ You need to pay this amount to the government in your GST return filing."
-                info_color = '#dc3545'
-            elif net_gst < 0:
-                ttk.Label(result_frame, text="GST REFUND CLAIMABLE:", 
-                    font=('Arial', 16, 'bold')).pack(pady=8)
-                ttk.Label(result_frame, text=f"₹{abs(net_gst):,.2f}", 
-                    font=('Arial', 24, 'bold'), foreground='#28a745').pack(pady=8)
-            
-                info_text = "✓ You can claim this refund from the government (Input GST > Output GST)."
-                info_color = '#28a745'
-            else:
-                ttk.Label(result_frame, text="NET GST LIABILITY:", 
-                    font=('Arial', 16, 'bold')).pack(pady=8)
-                ttk.Label(result_frame, text="₹0.00", 
-                    font=('Arial', 24, 'bold'), foreground='#17a2b8').pack(pady=8)
-            
-                info_text = "✓ Your Input and Output GST are perfectly balanced. No payment or refund."
-                info_color = '#17a2b8'
-        
-            ttk.Label(net_section, text=info_text, 
-                font=('Arial', 11), foreground=info_color).pack(pady=10)
-        
-            # ========== BRACKET BREAKDOWN ==========
-            ttk.Separator(net_section, orient='horizontal').pack(fill='x', pady=20)
-        
-            ttk.Label(net_section, text="Net GST Liability by Tax Bracket:", 
-                font=('Arial', 13, 'bold')).pack(anchor='w', pady=(15, 15))
-        
-            bracket_frame = ttk.Frame(net_section)
-            bracket_frame.pack(fill='x')
-        
-            # Header
-            bracket_header = ttk.Frame(bracket_frame)
-            bracket_header.pack(fill='x', pady=(0, 10))
-        
-            bracket_headers = [
-                ("Tax Rate", 12),
-                ("Output GST", 15),
-                ("Input GST", 15),
-                ("Net Payable", 15)
-            ]
-        
-            for text, width in bracket_headers:
-                ttk.Label(bracket_header, text=text, font=('Arial', 11, 'bold'), 
-                    width=width).pack(side='left', padx=12)
-        
-            ttk.Separator(bracket_frame, orient='horizontal').pack(fill='x', pady=8)
-        
+            # Data rows
             for gst_rate in all_gst_rates:
                 output_gst_amt = output_gst_data.get(gst_rate, {}).get('gst', 0)
                 input_gst_amt = input_gst_data.get(gst_rate, {}).get('gst', 0)
                 net_bracket = output_gst_amt - input_gst_amt
+                output_orders = output_gst_data.get(gst_rate, {}).get('orders', 0)
+                input_orders = input_gst_data.get(gst_rate, {}).get('orders', 0)
             
                 if output_gst_amt > 0 or input_gst_amt > 0:
                     color = self._get_gst_color(gst_rate)
                 
-                    bracket_row = ttk.Frame(bracket_frame)
-                    bracket_row.pack(fill='x', pady=5)
+                    row_frame = ttk.Frame(comparison_section)
+                    row_frame.pack(fill='x', pady=3)
                 
-                    ttk.Label(bracket_row, text=f"{gst_rate:.1f}%", 
-                        font=('Arial', 11, 'bold'), foreground=color, width=12).pack(side='left', padx=12)
-                    ttk.Label(bracket_row, text=f"₹{output_gst_amt:,.2f}", 
-                        font=('Arial', 11), width=15).pack(side='left', padx=12)
-                    ttk.Label(bracket_row, text=f"₹{input_gst_amt:,.2f}", 
-                        font=('Arial', 11), width=15).pack(side='left', padx=12)
+                    ttk.Label(row_frame, text=f"{gst_rate:.1f}%", 
+                        font=('Arial', 10, 'bold'), foreground=color, width=8).pack(side='left', padx=8)
+                    ttk.Label(row_frame, text=f"₹{output_gst_amt:,.2f}", 
+                        font=('Arial', 10), width=15).pack(side='left', padx=8)
+                    ttk.Label(row_frame, text=f"₹{input_gst_amt:,.2f}", 
+                        font=('Arial', 10), width=15).pack(side='left', padx=8)
                 
                     net_color = '#dc3545' if net_bracket > 0 else ('#28a745' if net_bracket < 0 else '#17a2b8')
-                    ttk.Label(bracket_row, text=f"₹{net_bracket:,.2f}", 
-                        font=('Arial', 11, 'bold'), foreground=net_color, width=15).pack(side='left', padx=12)
+                    ttk.Label(row_frame, text=f"₹{net_bracket:,.2f}", 
+                        font=('Arial', 10, 'bold'), foreground=net_color, width=12).pack(side='left', padx=8)
+                
+                    ttk.Label(row_frame, text=str(output_orders), 
+                        font=('Arial', 10), width=10).pack(side='left', padx=8)
+                    ttk.Label(row_frame, text=str(input_orders), 
+                        font=('Arial', 10), width=10).pack(side='left', padx=8)
+        
+            # === DETAILED BREAKDOWN - EXPANDABLE ===
+            details_section = ttk.LabelFrame(self.gst_scrollable_frame, 
+                text="📋 Detailed Breakdown (Click to Expand/Collapse)", padding=15)
+            details_section.pack(fill='x', pady=(0, 15))
+        
+            # Create collapsible sections
+            show_details = tk.BooleanVar(value=False)
+        
+            def toggle_details():
+                show_details.set(not show_details.get())
+                if show_details.get():
+                    details_content.pack(fill='x', pady=10)
+                    toggle_btn.config(text="▲ Hide Details")
+                else:
+                    details_content.pack_forget()
+                    toggle_btn.config(text="▼ Show Details")
+        
+            toggle_btn = ttk.Button(details_section, text="▼ Show Details", command=toggle_details)
+            toggle_btn.pack(pady=5)
+        
+            details_content = ttk.Frame(details_section)
+        
+            # Output GST details (compact)
+            output_frame = ttk.LabelFrame(details_content, text="Output GST (Sales)", padding=10)
+            output_frame.pack(fill='x', pady=5)
+        
+            for gst_rate in all_gst_rates:
+                if gst_rate in output_gst_data:
+                    data = output_gst_data[gst_rate]
+                    color = self._get_gst_color(gst_rate)
+                    row = ttk.Frame(output_frame)
+                    row.pack(fill='x', pady=2)
+                
+                    ttk.Label(row, text=f"{gst_rate:.1f}%:", font=('Arial', 9, 'bold'), 
+                        foreground=color, width=8).pack(side='left', padx=5)
+                    ttk.Label(row, text=f"Base: ₹{data['base']:,.2f}", 
+                        font=('Arial', 9), width=20).pack(side='left', padx=5)
+                    ttk.Label(row, text=f"GST: ₹{data['gst']:,.2f}", 
+                        font=('Arial', 9, 'bold'), foreground=color, width=20).pack(side='left', padx=5)
+                    ttk.Label(row, text=f"Orders: {data['orders']}", 
+                        font=('Arial', 9), width=12).pack(side='left', padx=5)
+                    ttk.Label(row, text=f"Items: {data['items']}", 
+                        font=('Arial', 9), width=12).pack(side='left', padx=5)
+        
+            # Input GST details (compact)
+            input_frame = ttk.LabelFrame(details_content, text="Input GST (Purchases)", padding=10)
+            input_frame.pack(fill='x', pady=5)
+        
+            for gst_rate in all_gst_rates:
+                if gst_rate in input_gst_data:
+                    data = input_gst_data[gst_rate]
+                    color = self._get_gst_color(gst_rate)
+                    row = ttk.Frame(input_frame)
+                    row.pack(fill='x', pady=2)
+                
+                    ttk.Label(row, text=f"{gst_rate:.1f}%:", font=('Arial', 9, 'bold'), 
+                        foreground=color, width=8).pack(side='left', padx=5)
+                    ttk.Label(row, text=f"Base: ₹{data['base']:,.2f}", 
+                        font=('Arial', 9), width=20).pack(side='left', padx=5)
+                    ttk.Label(row, text=f"GST: ₹{data['gst']:,.2f}", 
+                        font=('Arial', 9, 'bold'), foreground=color, width=20).pack(side='left', padx=5)
+                    ttk.Label(row, text=f"Orders: {data['orders']}", 
+                        font=('Arial', 9), width=12).pack(side='left', padx=5)
+                    ttk.Label(row, text=f"Items: {data['items']}", 
+                        font=('Arial', 9), width=12).pack(side='left', padx=5)
         
         else:
             # No data
             empty_frame = ttk.Frame(self.gst_scrollable_frame)
             empty_frame.pack(expand=True, fill='both', pady=100)
-        
+            
             ttk.Label(empty_frame, text="📊 No GST Data Available", 
                 font=('Arial', 18, 'bold'), foreground='gray').pack(pady=15)
             ttk.Label(empty_frame, 
-                text="GST summary will appear once you create sales orders and purchase orders.\nBoth are needed to calculate net GST liability.", 
-                font=('Arial', 12), foreground='gray', justify='center').pack(pady=8)
+                text="Create sales and purchase orders to see GST analysis", 
+                font=('Arial', 12), foreground='gray').pack(pady=8)
 
     def _get_gst_color(self, gst_rate):
         """Helper to get color for GST rate"""
