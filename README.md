@@ -1,49 +1,90 @@
-# Inventory Management System with GST Support
+# Inventory & GST-Aware Management System
 
-*A College Project – Integrated Purchase & Sales Management System for India*
+*A College Project – Integrated Purchase, Sales, and Inventory Workflow*
 
 ---
 
 ## 📘 About the Project
 
-**Inventory Management System** is a desktop-based application built as a **college project** to demonstrate practical understanding of how real businesses structure their data and workflows.
+This project is a **desktop-based inventory management system** developed as a college project to explore how real-world business processes can be modeled in software.
 
-The focus of this project is not government portal automation, but **clean transactional accounting**:
+The emphasis is on **correct flow of data and rules**, not on surface-level UI features. The system demonstrates how purchases, inventory, sales, and GST-related values interact internally inside an organization.
 
-* GUI development using Python Tkinter
-* Relational database design with SQLite
-* Real-world purchase & sales workflows
-* Modular software architecture
-* **GST-aware accounting design for India**
+Key learning goals include:
 
-The system models how GST is **captured, stored, and summarized** inside a business before filing, rather than attempting to automate statutory filing itself.
+* Designing relational databases for transactional systems
+* Separating business logic from user interface code
+* Modeling real purchase and sales workflows
+* Capturing GST data accurately at the transaction level
+* Building maintainable, modular Python applications
 
-This project is intended strictly for **educational and architectural demonstration purposes**, not for production or commercial deployment.
+The project focuses on **how information moves and changes**, and how software enforces consistency when multiple modules share the same data.
 
 ---
 
-## 🎯 What This Project Is For
+## 🎯 System Overview
 
-The objective of this project is to model a **mini ERP-style system** where different departments interact with shared, GST-aware data.
+The system models a simplified ERP-style workflow where different operations operate on a shared, consistent source of truth.
 
-* **Purchase Department** records purchases and captures *Input GST*
-* **Sales Department** records sales and captures *Output GST*
-* **Inventory Control** reflects only physically accepted stock
-
-The system demonstrates how value (and tax) flows through a business:
+Core flow:
 
 **Items → Purchase Orders → Goods Receipt → Inventory → Sales Orders → Invoices → Reports**
 
-GST is treated as **data captured at the transaction level**, not as a value reconstructed later.
+Each step has clear rules:
+
+* Inventory increases only when goods are *accepted*
+* Inventory decreases only when goods are *sold*
+* Orders move through defined states instead of arbitrary edits
+* GST values are captured once and stored, not recalculated unpredictably
+
+This mirrors how real accounting and inventory systems prevent silent data corruption.
+
+---
+
+## 🧾 GST Handling Philosophy
+
+This system does **not** file GST returns.
+
+Instead, it focuses on preparing **clean, auditable GST data** that would exist *before* any statutory filing process.
+
+* GST is stored **per item per transaction**
+* Purchases generate **Input GST**
+* Sales generate **Output GST**
+* Reports summarize GST values automatically
+
+Conceptually:
+
+`Net GST Liability = Output GST – Input GST`
+
+The system ensures both sides of this equation are captured transparently and consistently.
+
+All regulatory workflows (returns, portal submissions, validations) are intentionally outside the scope of this project.
+
+---
+
+## 🧠 Architectural Approach
+
+The application is structured around three core layers:
+
+1. **Database Layer**
+   Defines tables, relationships, and persistent state using SQLite.
+
+2. **Business Logic Layer**
+   Enforces rules such as order states, stock updates, GST calculations, and valid transitions.
+
+3. **UI Layer (Tkinter)**
+   Responsible only for user interaction and displaying results, not for deciding business rules.
+
+This separation makes the system easier to reason about, test, and extend.
 
 ---
 
 ## 🛠 Technologies Used
 
 * **Python 3** – Core programming language
-* **Tkinter / ttk** – GUI framework for desktop interface
+* **Tkinter / ttk** – Desktop GUI framework
 * **SQLite3** – Embedded relational database
-* Modular architecture with separate Python modules for different business functions
+* Modular Python files for clear separation of concerns
 
 ---
 
@@ -53,8 +94,8 @@ GST is treated as **data captured at the transaction level**, not as a value rec
 inventory-management/
 ├── main.py                 # Application entry point & window manager
 ├── database.py             # Database schema and initialization
-├── purchase_module.py      # Purchase orders, suppliers & goods receipt
-├── sales_module.py         # Sales orders, customers, invoices & reports
+├── purchase_module.py      # Purchase workflows and goods receipt
+├── sales_module.py         # Sales workflows, invoicing, and reports
 ├── screenshots/
 │   ├── APPFINAL1.png
 │   ├── APPFINAL2.png
@@ -66,51 +107,9 @@ inventory-management/
 
 ---
 
-## 🧾 GST Handling Philosophy (Important)
+## ▶️ How to Run
 
-This system does **not** file GST returns.
-
-Instead, it prepares **accurate, auditable GST data** that a business would use *before* filing:
-
-* GST is stored **per item** at the time of purchase and sale
-* Purchase transactions generate **Input GST**
-* Sales transactions generate **Output GST**
-* Reports summarize GST amounts automatically
-
-This mirrors how real accounting systems work internally. Actual filing (GSTR-1, GSTR-3B, portal submission, OTPs, validations) is intentionally **out of scope** for this project.
-
-**Net GST Liability (Conceptual):**
-
-`GST Payable = Output GST – Input GST`
-
-The system ensures both sides of this equation are captured cleanly and transparently.
-
----
-
-## ⚠️ Known Limitations
-
-### GST Scope Limitations
-
-* No CGST / SGST / IGST split
-* No place-of-supply logic
-* No HSN-wise statutory summaries
-* No return matching (GSTR-1 vs 2B)
-* No credit reversal or time-limit rules
-
-These are **regulatory layers**, not architectural flaws, and can be added on top of the existing design.
-
-### System Limitations
-
-* No user authentication or role-based access
-* No export to PDF or Excel
-* Single-user desktop system
-* No email or portal integration
-
----
-
-## ▶️ How to Run the Project
-
-1. Ensure Python 3.7 or higher is installed
+1. Install Python 3.7 or newer
 2. Navigate to the project directory
 3. Run:
 
@@ -118,31 +117,52 @@ These are **regulatory layers**, not architectural flaws, and can be added on to
 python main.py
 ```
 
-The application will initialize the database automatically and launch the GUI.
-
-
-### Sample Workflow
-
-1. **Add Items** - Create inventory items with purchase and selling prices
-2. **Add Supplier** - Create a supplier with GSTIN
-3. **Create PO** - Order items from supplier
-4. **Receive Goods** - Record goods receipt (accept/reject quantities)
-5. **Add Customer** - Create customer with GSTIN
-6. **Create SO** - Sell items to customer (inventory auto-reduces)
-7. **Generate Invoice** - Create invoice from sales order
-8. **Mark Paid** - Update invoice payment status
-9. **View Reports** - Check sales analytics and top items
+The database initializes automatically on first run.
 
 ---
 
-## 📸Screenshots
+## 🔄 Example Workflow
+
+1. Add inventory items with purchase and selling details
+2. Create suppliers with GST information
+3. Raise a purchase order
+4. Record goods receipt (accepted and rejected quantities)
+5. Create customers with GST details
+6. Create sales orders from available inventory
+7. Generate invoices from completed sales
+8. Update payment status
+9. View sales and GST summary reports
+
+Each step updates system state in a controlled and traceable manner.
+
+---
+
+## ⚠️ Known Limitations
+
+### GST Scope
+
+* No CGST / SGST / IGST split
+* No place-of-supply logic
+* No statutory return formats
+* No credit reversal rules
+
+These are regulatory extensions and not the focus of the current design.
+
+### System Scope
+
+* No user authentication or role-based access
+* Single-user desktop application
+* No export to PDF or Excel
+* No external integrations
+
+---
+
+## 📸 Screenshots
 
 ![screenshot1](screenshots/APPFINAL1.png)
 ![screenshot2](screenshots/APPFINAL2.png)
 ![screenshot3](screenshots/APPFINAL3.png)
 ![screenshot4](screenshots/APPFINAL4.png)
 ![screenshot5](screenshots/APPFINAL5.png)
-![screenshot6](screenshots/APPFINAL7.png)
-![screenshot7](screenshots/APPFINAL8.png)
-![screenshot8](screenshots/APPFINAL9.png)
-![screenshot9](screenshots/APPFINAL6.png)
+![screenshot6](screenshots/APPFINAL6.png)
+![screenshot7](screenshots/APPFINAL7.png)
