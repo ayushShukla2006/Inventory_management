@@ -116,7 +116,7 @@ inventory-management/
 3. Run:
 
 ```bash
-python main.py
+python3 main.py
 ```
 
 The database initializes automatically on first run.
