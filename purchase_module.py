@@ -114,7 +114,7 @@ class PurchaseModule:
     def add_new_item(self):
         dialog = tk.Toplevel(self.app.root)
         dialog.title("Add New Item")
-        dialog.geometry("500x550")
+        dialog.geometry("500x600")
         dialog.transient(self.app.root)
         dialog.grab_set()
         
@@ -217,7 +217,7 @@ class PurchaseModule:
         
         dialog = tk.Toplevel(self.app.root)
         dialog.title("Edit Item")
-        dialog.geometry("500x550")
+        dialog.geometry("500x600")
         dialog.transient(self.app.root)
         dialog.grab_set()
         
@@ -661,7 +661,7 @@ class PurchaseModule:
     def add_supplier(self):
         dialog = tk.Toplevel(self.app.root)
         dialog.title("Add Supplier")
-        dialog.geometry("450x350")
+        dialog.geometry("500x400")
         dialog.transient(self.app.root)
         dialog.grab_set()
         fields = [("Name:*", "name"), ("Contact Person:", "contact"), ("Phone:", "phone"), 
@@ -699,7 +699,7 @@ class PurchaseModule:
         data = self.db.fetchone()
         dialog = tk.Toplevel(self.app.root)
         dialog.title("Edit Supplier")
-        dialog.geometry("450x350")
+        dialog.geometry("450x375")
         dialog.transient(self.app.root)
         dialog.grab_set()
         fields = ["Name:", "Contact:", "Phone:", "Email:", "Address:", "GSTIN:", "Terms:"]
@@ -818,6 +818,9 @@ class PurchaseModule:
         dialog.title(f"Receipt Details - Invoice: {invoice_number}")
         dialog.geometry("900x500")
         dialog.transient(self.app.root)
+        
+        # Wait for window to be visible before grabbing
+        dialog.update_idletasks()
         dialog.grab_set()
     
         #Header info
@@ -1179,7 +1182,7 @@ class PurchaseModule:
     
         dialog = tk.Toplevel(self.app.root)
         dialog.title("New Goods Receipt - Multi-Item")
-        dialog.geometry("1200x800")
+        dialog.geometry("1200x900")
         dialog.resizable(True, True)
         dialog.transient(self.app.root)
         dialog.grab_set()

@@ -9,6 +9,16 @@ from database import Database
 from purchase_module import PurchaseModule
 from sales_module import SalesModule
 
+
+# ==================== GLOBAL UI SETTINGS ====================
+
+UI_SCALING = 1.60 # 1.10 subtle | 1.15 comfortable | 1.20 accessibility
+
+BASE_FONT = ("Arial", 12)
+SMALL_FONT = ("Arial", 14)
+TITLE_FONT = ("Arial", 18, "bold")
+HEADER_FONT = ("Arial", 16, "bold")
+
 class IntegratedManagementSystem:
     def __init__(self, root):
         self.root = root
@@ -31,7 +41,8 @@ class IntegratedManagementSystem:
         # Show welcome screen by default
         self.show_dashboard()
         
-    
+    # ==================== MENU BAR ====================
+
     def create_menu_bar(self):
         """Create the top menu bar"""
         menubar = tk.Menu(self.root)
@@ -59,11 +70,6 @@ class IntegratedManagementSystem:
         masters_menu.add_command(label="👥 Customers", 
                             command=lambda: self.switch_to_tab("👥 Customers"))
         masters_menu.add_separator()
-            # MOVED: Purchase and Sales Orders to Masters
-        masters_menu.add_command(label="🛒 Purchase Orders", 
-                            command=lambda: self.switch_to_tab("🛒 Purchase Orders"))
-        masters_menu.add_command(label="🛍 Sales Orders", 
-                            command=lambda: self.switch_to_tab("🛒 Sales Orders"))
 
     # ==================== TRANSACTIONS MENU ====================
         transactions_menu = tk.Menu(menubar, tearoff=0)
@@ -72,24 +78,32 @@ class IntegratedManagementSystem:
         # Purchase submenu
         purchase_submenu = tk.Menu(transactions_menu, tearoff=0)
         transactions_menu.add_cascade(label="🛒 Purchase", menu=purchase_submenu)
+        purchase_submenu.add_command(
+            label="📄 Purchase Orders",
+            command=lambda: self.switch_to_tab("🛒 Purchase Orders")
+        )
         purchase_submenu.add_command(label="➕ Create Purchase Order", 
                                     command=self.purchase_module.create_purchase_order)
-        purchase_submenu.add_command(label="📥 Record Goods Receipt", 
-                                    command=self.purchase_module.new_goods_receipt)
         purchase_submenu.add_command(label="📋 View Goods Receipts", 
                                     command=lambda: self.switch_to_tab("📥 Goods Receipt"))
-    
+        purchase_submenu.add_command(label="📥 Record Goods Receipt", 
+                                    command=self.purchase_module.new_goods_receipt)
+
         transactions_menu.add_separator()
     
         # Sales submenu
         sales_submenu = tk.Menu(transactions_menu, tearoff=0)
         transactions_menu.add_cascade(label="🛍️ Sales", menu=sales_submenu)
+        sales_submenu.add_command(
+            label="📄 Sales Orders",
+            command=lambda: self.switch_to_tab("🛒 Sales Orders")
+        )
         sales_submenu.add_command(label="➕ Create Sales Order", 
                                  command=self.sales_module.create_sales_order)
-        sales_submenu.add_command(label="🚚 Process Delivery", 
-                                 command=self.sales_module.new_delivery)
         sales_submenu.add_command(label="📋 View Deliveries", 
                                  command=lambda: self.switch_to_tab("🚚 Delivery"))
+        sales_submenu.add_command(label="🚚 Process Delivery", 
+                                 command=self.sales_module.new_delivery)
     
         transactions_menu.add_separator()
     
@@ -117,7 +131,6 @@ class IntegratedManagementSystem:
         # ==================== HELP MENU ====================
         help_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="❓ Help", menu=help_menu)
-    
         help_menu.add_command(label="📖 About", command=self.show_about)
         help_menu.add_command(label="ℹ️ System Info", command=self.show_system_info)
 
@@ -125,17 +138,18 @@ class IntegratedManagementSystem:
     def create_main_content(self):
         """Create the main content area"""
         # Header frame
-        header_frame = ttk.Frame(self.root)
-        header_frame.pack(fill='x', padx=10, pady=(5, 0))
+        header = ttk.Frame(self.root)
+        header.pack(fill='x', padx=10, pady=(5))
         
-        # Title
-        title_label = ttk.Label(header_frame, 
-                               text="Integrated Purchase & Sales Management System", 
-                               font=('Arial', 16, 'bold'))
-        title_label.pack(side='left', pady=10)
+        ttk.Label(header,
+                  text="Integrated Purchase & Sales Management System",
+                  font=HEADER_FONT).pack(side="left", pady=10)
+
+        quick = ttk.Frame(header)
+        quick.pack(side="right")
         
         # Quick action buttons
-        quick_frame = ttk.Frame(header_frame)
+        quick_frame = ttk.Frame(header)
         quick_frame.pack(side='right', pady=10)
         
         ttk.Button(quick_frame, text="🏠 Dashboard", 
@@ -154,6 +168,8 @@ class IntegratedManagementSystem:
         style = ttk.Style()
         style.layout("TNotebook.Tab", [])
     
+        # ==================== NAVIGATION ====================
+    
     def switch_to_tab(self, tab_name):
         """Switch to a specific tab by name"""
         for i in range(self.notebook.index("end")):
@@ -161,6 +177,8 @@ class IntegratedManagementSystem:
                 self.notebook.select(i)
                 return
         messagebox.showinfo("Info", f"Tab '{tab_name}' not found")
+    
+    # ==================== DASHBOARD ====================
     
     def show_dashboard(self):
         """Show dashboard with summary statistics"""
@@ -180,10 +198,12 @@ class IntegratedManagementSystem:
         title_frame = ttk.Frame(dashboard_frame)
         title_frame.pack(fill='x', padx=20, pady=20)
         
-        ttk.Label(title_frame, text="System Dashboard", 
-                 font=('Arial', 18, 'bold')).pack(anchor='w')
-        ttk.Label(title_frame, text="Quick overview of your business operations", 
-                 font=('Arial', 10), foreground='gray').pack(anchor='w')
+        ttk.Label(title_frame, text="System Dashboard",
+                  font=TITLE_FONT).pack(anchor="w")
+        ttk.Label(title_frame,
+                  text="Quick overview of your business operations",
+                  font=SMALL_FONT,
+                  foreground="gray").pack(anchor="w")
         
         # Create dashboard content
         self.dashboard_frame = dashboard_frame
@@ -440,6 +460,15 @@ Status: Operational ✓"""
 
 if __name__ == "__main__":
     root = tk.Tk()
+
+    # Global scaling (THIS fixes small text everywhere)
+    root.tk.call("tk", "scaling", UI_SCALING)
+
+    # Treeview readability
+    style = ttk.Style()
+    style.configure("Treeview", font=BASE_FONT, rowheight=28)
+    style.configure("Treeview.Heading", font=(BASE_FONT[0], BASE_FONT[1], "bold"))
+
     app = IntegratedManagementSystem(root)
     root.protocol("WM_DELETE_WINDOW", app.on_closing)
     root.mainloop()
