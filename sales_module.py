@@ -1771,51 +1771,58 @@ class SalesModule:
         
         dialog = tk.Toplevel(self.app.root)
         dialog.title(f"Invoice #{invoice_id} Details")
-        dialog.geometry("960x1025")
+        dialog.geometry("750x600")
         dialog.transient(self.app.root)
         dialog.grab_set()
         
-        # Header
-        header_frame = ttk.Frame(dialog, padding=15)
+        # Header - Compact
+        header_frame = ttk.Frame(dialog, padding=8)
         header_frame.pack(fill='x')
         
         ttk.Label(header_frame, text=f"INVOICE #{invoice_id}", 
-            font=('Arial', 16, 'bold')).pack()
-        ttk.Label(header_frame, text=f"Sales Order: #{so_number}", 
-            font=('Arial', 10)).pack()
+            font=('Arial', 14, 'bold')).pack()
+        ttk.Label(header_frame, text=f"SO #{so_number}", 
+            font=('Arial', 9)).pack()
         
-        # Customer Info
-        cust_frame = ttk.LabelFrame(dialog, text="Customer Information", padding=10)
-        cust_frame.pack(fill='x', padx=10, pady=10)
+        # Customer & Invoice Info Combined - Compact
+        info_frame = ttk.LabelFrame(dialog, text="Invoice Details", padding=8)
+        info_frame.pack(fill='x', padx=10, pady=5)
         
-        ttk.Label(cust_frame, text=f"Name: {inv_data[2]}", font=('Arial', 10)).pack(anchor='w', pady=2)
-        ttk.Label(cust_frame, text=f"GSTIN: {inv_data[3] or 'N/A'}", font=('Arial', 10)).pack(anchor='w', pady=2)
-        ttk.Label(cust_frame, text=f"Address: {inv_data[4] or 'N/A'}", font=('Arial', 10)).pack(anchor='w', pady=2)
+        # Left column
+        left_col = ttk.Frame(info_frame)
+        left_col.pack(side='left', fill='both', expand=True)
         
-        # Invoice Info
-        info_frame = ttk.LabelFrame(dialog, text="Invoice Information", padding=10)
-        info_frame.pack(fill='x', padx=10, pady=10)
+        ttk.Label(left_col, text=f"Customer: {inv_data[2]}", font=('Arial', 9, 'bold')).pack(anchor='w', pady=1)
+        ttk.Label(left_col, text=f"GSTIN: {inv_data[3] or 'N/A'}", font=('Arial', 8)).pack(anchor='w', pady=1)
+        ttk.Label(left_col, text=f"Invoice Date: {inv_data[5]}", font=('Arial', 8)).pack(anchor='w', pady=1)
         
-        info_labels = [
-            f"Invoice Date: {inv_data[5]}",
-            f"Due Date: {inv_data[6]}",
-            f"Status: {inv_data[10]}"
-        ]
+        # Right column
+        right_col = ttk.Frame(info_frame)
+        right_col.pack(side='right', fill='both', expand=True)
         
-        for text in info_labels:
-            ttk.Label(info_frame, text=text, font=('Arial', 10)).pack(anchor='w', pady=2)
+        status_color = 'green' if inv_data[10] == 'Paid' else 'red'
+        ttk.Label(right_col, text=f"Status: {inv_data[10]}", 
+            font=('Arial', 9, 'bold'), foreground=status_color).pack(anchor='e', pady=1)
+        ttk.Label(right_col, text=f"Due Date: {inv_data[6]}", font=('Arial', 8)).pack(anchor='e', pady=1)
+        ttk.Label(right_col, text=f"Address: {inv_data[4][:30]}..." if inv_data[4] and len(inv_data[4]) > 30 else f"Address: {inv_data[4] or 'N/A'}", 
+            font=('Arial', 8)).pack(anchor='e', pady=1)
         
-        # Items
-        items_frame = ttk.LabelFrame(dialog, text="Invoice Items", padding=10)
-        items_frame.pack(fill='both', expand=True, padx=10, pady=10)
+        # Items - Scrollable and Compact
+        items_frame = ttk.LabelFrame(dialog, text="Items", padding=5)
+        items_frame.pack(fill='both', expand=True, padx=10, pady=5)
         
-        columns = ("Item", "Qty", "Rate", "GST%", "GST Amount", "Total")
-        tree = ttk.Treeview(items_frame, columns=columns, show='headings', height=10)
-        col_widths = [300, 70, 100, 80, 120, 120]
+        columns = ("Item", "Qty", "Rate", "GST%", "GST Amt", "Total")
+        tree = ttk.Treeview(items_frame, columns=columns, show='headings', height=6)
+        col_widths = [220, 50, 80, 60, 80, 90]
         for i, col in enumerate(columns):
             tree.heading(col, text=col)
             tree.column(col, width=col_widths[i])
-        tree.pack(fill='both', expand=True)
+        
+        scrollbar = ttk.Scrollbar(items_frame, orient='vertical', command=tree.yview)
+        tree.configure(yscrollcommand=scrollbar.set)
+        
+        tree.pack(side='left', fill='both', expand=True)
+        scrollbar.pack(side='right', fill='y')
         
         # Get items from sales order
         self.db.execute('''
@@ -1832,37 +1839,31 @@ class SalesModule:
                 f"{row[3]:.1f}%", f"₹{row[4]:.2f}", f"₹{row[5]:.2f}"
             ))
         
-        # Amount Summary
-        summary_frame = ttk.LabelFrame(dialog, text="Amount Summary", padding=15)
-        summary_frame.pack(fill='x', padx=10, pady=10)
+        # Amount Summary - Compact Grid
+        summary_frame = ttk.LabelFrame(dialog, text="Amount Summary", padding=8)
+        summary_frame.pack(fill='x', padx=10, pady=5)
         
-        ttk.Label(summary_frame, text="Subtotal:", font=('Arial', 10)).grid(
-            row=0, column=0, sticky='w', padx=10, pady=3)
-        ttk.Label(summary_frame, text=f"₹{inv_data[7]:.2f}", font=('Arial', 10, 'bold')).grid(
-            row=0, column=1, sticky='e', padx=10, pady=3)
+        ttk.Label(summary_frame, text="Subtotal:", font=('Arial', 9)).grid(
+            row=0, column=0, sticky='w', padx=8, pady=2)
+        ttk.Label(summary_frame, text=f"₹{inv_data[7]:.2f}", font=('Arial', 9, 'bold')).grid(
+            row=0, column=1, sticky='e', padx=8, pady=2)
         
-        ttk.Label(summary_frame, text="GST:", font=('Arial', 10)).grid(
-            row=1, column=0, sticky='w', padx=10, pady=3)
-        ttk.Label(summary_frame, text=f"₹{inv_data[8]:.2f}", font=('Arial', 10, 'bold'), 
-            foreground='blue').grid(row=1, column=1, sticky='e', padx=10, pady=3)
+        ttk.Label(summary_frame, text="GST:", font=('Arial', 9)).grid(
+            row=0, column=2, sticky='w', padx=8, pady=2)
+        ttk.Label(summary_frame, text=f"₹{inv_data[8]:.2f}", font=('Arial', 9, 'bold'), 
+            foreground='blue').grid(row=0, column=3, sticky='e', padx=8, pady=2)
         
-        ttk.Separator(summary_frame, orient='horizontal').grid(
-            row=2, column=0, columnspan=2, sticky='ew', padx=10, pady=5)
+        ttk.Separator(summary_frame, orient='vertical').grid(
+            row=0, column=4, rowspan=2, sticky='ns', padx=5)
         
-        ttk.Label(summary_frame, text="Total Amount:", font=('Arial', 12, 'bold')).grid(
-            row=3, column=0, sticky='w', padx=10, pady=3)
-        ttk.Label(summary_frame, text=f"₹{inv_data[9]:.2f}", font=('Arial', 12, 'bold'), 
-            foreground='green').grid(row=3, column=1, sticky='e', padx=10, pady=3)
-        
-        # Status badge
-        status_color = 'green' if inv_data[10] == 'Paid' else 'red'
-        ttk.Label(summary_frame, text=f"Payment Status: {inv_data[10]}", 
-            font=('Arial', 11, 'bold'), foreground=status_color).grid(
-            row=4, column=0, columnspan=2, pady=10)
+        ttk.Label(summary_frame, text="Total:", font=('Arial', 10, 'bold')).grid(
+            row=0, column=5, sticky='w', padx=8, pady=2)
+        ttk.Label(summary_frame, text=f"₹{inv_data[9]:.2f}", font=('Arial', 10, 'bold'), 
+            foreground='green').grid(row=0, column=6, sticky='e', padx=8, pady=2)
         
         # Action buttons
         btn_frame = ttk.Frame(dialog)
-        btn_frame.pack(pady=10)
+        btn_frame.pack(pady=8)
         
         if inv_data[10] == 'Unpaid':
             def mark_paid_from_view():
@@ -1878,8 +1879,7 @@ class SalesModule:
             
             ttk.Button(btn_frame, text="💰 Mark as Paid", command=mark_paid_from_view).pack(side='left', padx=5)
         
-        ttk.Button(btn_frame, text="❌ Close", command=dialog.destroy).pack(side='left', padx=5)
-        
+        ttk.Button(btn_frame, text="✖ Close", command=dialog.destroy).pack(side='left', padx=5)
     
     
     
