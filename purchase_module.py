@@ -114,7 +114,7 @@ class PurchaseModule:
     def add_new_item(self):
         dialog = tk.Toplevel(self.app.root)
         dialog.title("Add New Item")
-        dialog.geometry("500x600")
+        dialog.geometry("500x650")
         dialog.transient(self.app.root)
         dialog.grab_set()
         
@@ -217,7 +217,7 @@ class PurchaseModule:
         
         dialog = tk.Toplevel(self.app.root)
         dialog.title("Edit Item")
-        dialog.geometry("500x600")
+        dialog.geometry("500x650")
         dialog.transient(self.app.root)
         dialog.grab_set()
         
@@ -406,7 +406,7 @@ class PurchaseModule:
         
         dialog = tk.Toplevel(self.app.root)
         dialog.title("Create Purchase Order - Multi-Item (with GST)")
-        dialog.geometry("950x700")
+        dialog.geometry("1050x700")
         dialog.transient(self.app.root)
         dialog.grab_set()
         
@@ -661,7 +661,7 @@ class PurchaseModule:
     def add_supplier(self):
         dialog = tk.Toplevel(self.app.root)
         dialog.title("Add Supplier")
-        dialog.geometry("500x400")
+        dialog.geometry("550x450")
         dialog.transient(self.app.root)
         dialog.grab_set()
         fields = [("Name:*", "name"), ("Contact Person:", "contact"), ("Phone:", "phone"), 
@@ -699,7 +699,7 @@ class PurchaseModule:
         data = self.db.fetchone()
         dialog = tk.Toplevel(self.app.root)
         dialog.title("Edit Supplier")
-        dialog.geometry("450x375")
+        dialog.geometry("500x400")
         dialog.transient(self.app.root)
         dialog.grab_set()
         fields = ["Name:", "Contact:", "Phone:", "Email:", "Address:", "GSTIN:", "Terms:"]

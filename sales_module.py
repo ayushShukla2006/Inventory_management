@@ -67,7 +67,7 @@ class SalesModule:
     def add_customer(self):
         dialog = tk.Toplevel(self.app.root)
         dialog.title("Add Customer")
-        dialog.geometry("500x400")
+        dialog.geometry("550x450")
         dialog.transient(self.app.root)
         dialog.grab_set()
         fields = [("Customer Name:*", "name"), ("Contact Person:", "contact"), ("Phone:", "phone"),
@@ -116,7 +116,7 @@ class SalesModule:
         data = self.db.fetchone()
         dialog = tk.Toplevel(self.app.root)
         dialog.title("Edit Customer")
-        dialog.geometry("500x400")
+        dialog.geometry("500x450")
         dialog.transient(self.app.root)
         dialog.grab_set()
         fields = ["Name:", "Contact:", "Phone:", "Email:", "Address:", "GSTIN:", "Credit (₹):", "Terms:"]
@@ -250,7 +250,7 @@ class SalesModule:
         
         dialog = tk.Toplevel(self.app.root)
         dialog.title("Create Sales Order - Multi-Item (with GST)")
-        dialog.geometry("1050x750")
+        dialog.geometry("1150x750")
         dialog.transient(self.app.root)
         dialog.grab_set()
         
