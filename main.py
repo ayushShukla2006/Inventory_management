@@ -56,6 +56,9 @@ class IntegratedManagementSystem:
         home_menu.add_separator()
         home_menu.add_command(label="🔄 Refresh All Data", command=self.refresh_all_tabs)
         home_menu.add_separator()
+        
+        home_menu.add_command(label="📖 About", command=self.show_about)
+        home_menu.add_command(label="ℹ️ System Info", command=self.show_system_info)
         home_menu.add_command(label="🚪 Exit", command=self.on_closing)
     
         # ==================== MASTERS MENU ====================
@@ -128,11 +131,7 @@ class IntegratedManagementSystem:
         reports_menu.add_command(label="⚠️ Low Stock Alerts", 
                                 command=lambda: self.switch_to_tab("⚠️ Alerts"))
     
-        # ==================== HELP MENU ====================
-        help_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="❓ Help", menu=help_menu)
-        help_menu.add_command(label="📖 About", command=self.show_about)
-        help_menu.add_command(label="ℹ️ System Info", command=self.show_system_info)
+        
 
     
     def create_main_content(self):
