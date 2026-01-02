@@ -200,7 +200,7 @@ class IntegratedManagementSystem:
                 self.notebook.select(i)
                 self.refresh_dashboard()
                 return
-        
+            
         # Create dashboard tab
         dashboard_frame = ttk.Frame(self.notebook)
         self.notebook.insert(0, dashboard_frame, text="🏠 Dashboard")
