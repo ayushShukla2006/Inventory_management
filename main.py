@@ -28,6 +28,17 @@ class IntegratedManagementSystem:
         # Initialize database
         self.db = Database()
         
+        # Check if company details exist - FIRST TIME SETUP
+        if not self.db.company_exists():
+            # Show first-time setup wizard
+            self.show_company_setup_wizard()
+            return
+        
+        # Normal initialization if company exists
+        self.initialize_main_app()
+
+    def initialize_main_app(self):
+        """Initialize the main application after company setup"""
         # Create main content area with notebook (before menu bar)
         self.create_main_content()
         
@@ -73,6 +84,8 @@ class IntegratedManagementSystem:
         masters_menu.add_command(label="👥 Customers", 
                             command=lambda: self.switch_to_tab("👥 Customers"))
         masters_menu.add_separator()
+        masters_menu.add_command(label="🏭 Company Details", 
+                            command=self.show_company_details)
 
     # ==================== TRANSACTIONS MENU ====================
         transactions_menu = tk.Menu(menubar, tearoff=0)
@@ -456,6 +469,354 @@ Status: Operational ✓"""
         if messagebox.askyesno("Exit", "Are you sure you want to exit?"):
             self.db.close()
             self.root.destroy()
+
+    # ==================== COMPANY SETUP & DETAILS ====================
+    
+    def show_company_setup_wizard(self):
+        """First-time setup wizard for company details"""
+        wizard = tk.Toplevel(self.root)
+        wizard.title("Welcome - Company Setup")
+        wizard.geometry("700x750")
+        wizard.resizable(True, True)
+        
+        # Make it modal
+        wizard.transient(self.root)
+        wizard.grab_set()
+        
+        # Prevent closing without completing setup
+        wizard.protocol("WM_DELETE_WINDOW", lambda: None)
+        
+        # Header
+        header_frame = ttk.Frame(wizard, padding=20)
+        header_frame.pack(fill='x')
+        
+        ttk.Label(header_frame, text="🏭 Company Setup Wizard", 
+                  font=('Arial', 18, 'bold')).pack()
+        ttk.Label(header_frame, text="Let's set up your company details to get started", 
+                  font=('Arial', 11), foreground='gray').pack(pady=5)
+        
+        ttk.Separator(wizard, orient='horizontal').pack(fill='x', padx=20, pady=10)
+        
+        # Scrollable form
+        canvas = tk.Canvas(wizard)
+        scrollbar = ttk.Scrollbar(wizard, orient="vertical", command=canvas.yview)
+        form_frame = ttk.Frame(canvas)
+        
+        form_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=form_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True, padx=20)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Form fields
+        fields = [
+            ("Basic Information", None),
+            ("Company Name:*", "company_name", True),
+            ("Legal/Registered Name:", "legal_name", False),
+            ("", None),
+            ("Tax Information", None),
+            ("GSTIN (GST Number):", "gstin", False),
+            ("PAN Number:", "pan", False),
+            ("", None),
+            ("Address Details", None),
+            ("Address Line 1:*", "address_line1", True),
+            ("Address Line 2:", "address_line2", False),
+            ("City:*", "city", True),
+            ("State:*", "state", True),
+            ("PIN Code:*", "pincode", True),
+            ("Country:", "country", False),
+            ("", None),
+            ("Contact Information", None),
+            ("Phone Number:*", "phone", True),
+            ("Email Address:*", "email", True),
+            ("Website:", "website", False),
+            ("", None),
+            ("Financial Settings", None),
+            ("Financial Year Start (MM-DD):", "fy_start", False)
+        ]
+        
+        entries = {}
+        row = 0
+        
+        for field in fields:
+            if field[1] is None:
+                if field[0]:  # Section header
+                    ttk.Label(form_frame, text=field[0], 
+                             font=('Arial', 12, 'bold'), 
+                             foreground='#2c3e50').grid(row=row, column=0, columnspan=2, 
+                                                       sticky='w', padx=10, pady=(15, 5))
+                else:  # Empty space
+                    ttk.Label(form_frame, text="").grid(row=row, column=0, pady=5)
+                row += 1
+                continue
+            
+            label_text, key, required = field
+            
+            ttk.Label(form_frame, text=label_text, 
+                     font=('Arial', 10, 'bold' if required else 'normal')).grid(
+                row=row, column=0, padx=10, pady=8, sticky='w')
+            
+            entry = ttk.Entry(form_frame, width=40)
+            
+            # Set default values
+            if key == "country":
+                entry.insert(0, "India")
+            elif key == "fy_start":
+                entry.insert(0, "04-01")  # April 1st default
+            
+            entry.grid(row=row, column=1, padx=10, pady=8, sticky='ew')
+            entries[key] = entry
+            row += 1
+        
+        form_frame.grid_columnconfigure(1, weight=1)
+        
+        # Buttons at TOP - FIXED position
+        btn_frame = ttk.Frame(wizard, padding=15)
+        btn_frame.pack(fill='x', before=canvas)  # <-- Add before=canvas
+
+        # Info note (move after button frame definition, before validate function)
+        info_frame = ttk.Frame(wizard, padding=10)
+        info_frame.pack(fill='x', padx=20, before=canvas)  # <-- Add before=canvas
+
+        ttk.Label(info_frame, text="* Required fields", 
+             font=('Arial', 9), foreground='red').pack(anchor='w')
+        ttk.Label(info_frame, text="ℹ️ You can edit these details later from Masters > Company Details", 
+             font=('Arial', 9), foreground='blue').pack(anchor='w', pady=2)
+        
+        def validate_and_save():
+            """Validate and save company details"""
+            # Validate required fields
+            required_fields = {
+                'company_name': 'Company Name',
+                'address_line1': 'Address Line 1',
+                'city': 'City',
+                'state': 'State',
+                'pincode': 'PIN Code',
+                'phone': 'Phone Number',
+                'email': 'Email Address'
+            }
+            
+            for key, label in required_fields.items():
+                if not entries[key].get().strip():
+                    messagebox.showerror("Required Field", f"{label} is required")
+                    entries[key].focus()
+                    return
+            
+            # Validate email format
+            email = entries['email'].get().strip()
+            if '@' not in email or '.' not in email:
+                messagebox.showwarning("Invalid Email", "Please enter a valid email address")
+                entries['email'].focus()
+                return
+            
+            # Validate GSTIN format if provided
+            gstin = entries['gstin'].get().strip()
+            if gstin and len(gstin) != 15:
+                messagebox.showwarning("Invalid GSTIN", 
+                                     "GSTIN should be 15 characters long")
+                entries['gstin'].focus()
+                return
+            
+            # Validate PAN format if provided
+            pan = entries['pan'].get().strip().upper()
+            if pan and len(pan) != 10:
+                messagebox.showwarning("Invalid PAN", 
+                                     "PAN should be 10 characters long")
+                entries['pan'].focus()
+                return
+            
+            try:
+                # Save company details
+                details = (
+                    entries['company_name'].get().strip(),
+                    entries['legal_name'].get().strip() or None,
+                    entries['gstin'].get().strip().upper() or None,
+                    entries['pan'].get().strip().upper() or None,
+                    entries['address_line1'].get().strip(),
+                    entries['address_line2'].get().strip() or None,
+                    entries['city'].get().strip(),
+                    entries['state'].get().strip(),
+                    entries['pincode'].get().strip(),
+                    entries['country'].get().strip() or 'India',
+                    entries['phone'].get().strip(),
+                    entries['email'].get().strip(),
+                    entries['website'].get().strip() or None,
+                    entries['fy_start'].get().strip() or '04-01'
+                )
+                
+                self.db.save_company_details(details)
+                
+                messagebox.showinfo("Setup Complete", 
+                                  f"Welcome to {entries['company_name'].get()}!\n\n"
+                                  "Your company details have been saved.\n"
+                                  "The application will now start.")
+                
+                wizard.destroy()
+                
+                # Now initialize the main application
+                self.initialize_main_app()
+                
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to save company details: {str(e)}")
+        
+        ttk.Button(btn_frame, text="✅ Complete Setup & Start", 
+                  command=validate_and_save, width=30).pack(side='right', padx=5)
+        ttk.Label(btn_frame, text="Setup must be completed to use the application", 
+                 font=('Arial', 9), foreground='gray').pack(side='left')
+    
+    def show_company_details(self):
+        """View and edit company details"""
+        company = self.db.get_company_details()
+        
+        if not company:
+            messagebox.showerror("Error", "Company details not found")
+            return
+        
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Company Details")
+        dialog.geometry("700x750")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        # Header
+        header_frame = ttk.Frame(dialog, padding=15)
+        header_frame.pack(fill='x')
+        
+        ttk.Label(header_frame, text="🏭 Company Details", 
+                 font=('Arial', 16, 'bold')).pack()
+        ttk.Label(header_frame, text=f"Created: {company[16]} | Last Updated: {company[17]}", 
+                 font=('Arial', 9), foreground='gray').pack(pady=3)
+        
+        ttk.Separator(dialog, orient='horizontal').pack(fill='x', padx=10, pady=5)
+        
+        # Scrollable content
+        canvas = tk.Canvas(dialog)
+        scrollbar = ttk.Scrollbar(dialog, orient="vertical", command=canvas.yview)
+        content_frame = ttk.Frame(canvas)
+        
+        content_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=content_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True, padx=10)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Map database columns to display
+        fields = [
+            ("Basic Information", None, None),
+            ("Company Name:", company[1], "company_name"),
+            ("Legal Name:", company[2], "legal_name"),
+            ("", None, None),
+            ("Tax Information", None, None),
+            ("GSTIN:", company[3], "gstin"),
+            ("PAN:", company[4], "pan"),
+            ("", None, None),
+            ("Address", None, None),
+            ("Address Line 1:", company[5], "address_line1"),
+            ("Address Line 2:", company[6], "address_line2"),
+            ("City:", company[7], "city"),
+            ("State:", company[8], "state"),
+            ("PIN Code:", company[9], "pincode"),
+            ("Country:", company[10], "country"),
+            ("", None, None),
+            ("Contact Information", None, None),
+            ("Phone:", company[11], "phone"),
+            ("Email:", company[12], "email"),
+            ("Website:", company[13], "website"),
+            ("", None, None),
+            ("Financial Settings", None, None),
+            ("Financial Year Start:", company[15], "fy_start")
+        ]
+        
+        entries = {}
+        row = 0
+        
+        for field in fields:
+            if field[1] is None:
+                if field[0]:  # Section header
+                    ttk.Label(content_frame, text=field[0], 
+                             font=('Arial', 12, 'bold'), 
+                             foreground='#2c3e50').grid(row=row, column=0, columnspan=2, 
+                                                       sticky='w', padx=10, pady=(15, 5))
+                else:  # Empty space
+                    ttk.Label(content_frame, text="").grid(row=row, column=0, pady=5)
+                row += 1
+                continue
+            
+            label_text, value, key = field
+            
+            ttk.Label(content_frame, text=label_text, 
+                     font=('Arial', 10, 'bold')).grid(row=row, column=0, 
+                                                      padx=10, pady=6, sticky='w')
+            
+            entry = ttk.Entry(content_frame, width=40)
+            entry.insert(0, value or "")
+            entry.grid(row=row, column=1, padx=10, pady=6, sticky='ew')
+            entries[key] = entry
+            row += 1
+        
+        content_frame.grid_columnconfigure(1, weight=1)
+        
+        # Buttons at TOP - FIXED position
+        btn_frame = ttk.Frame(dialog, padding=10)
+        btn_frame.pack(fill='x', before=canvas)  # <-- Add before=canvas
+
+        # Info notes
+        info_frame = ttk.Frame(dialog, padding=10)
+        info_frame.pack(fill='x', before=canvas)  # <-- Add before=canvas
+
+        ttk.Label(info_frame, text="ℹ️ Some fields like GSTIN and PAN should match government records", 
+           font=('Arial', 9), foreground='blue').pack(anchor='w')
+        ttk.Label(info_frame, text="⚠️ Company name changes may affect reports and invoices", 
+             font=('Arial', 9), foreground='orange').pack(anchor='w', pady=2)
+        
+        def save_changes():
+            """Save updated company details"""
+            # Validate required fields
+            if not entries['company_name'].get().strip():
+                messagebox.showerror("Error", "Company Name is required")
+                return
+            
+            if not entries['email'].get().strip() or '@' not in entries['email'].get():
+                messagebox.showerror("Error", "Valid email is required")
+                return
+            
+            # Confirm changes
+            if not messagebox.askyesno("Confirm Changes", 
+                                      "Are you sure you want to update company details?"):
+                return
+            
+            try:
+                details = (
+                    entries['company_name'].get().strip(),
+                    entries['legal_name'].get().strip() or None,
+                    entries['gstin'].get().strip().upper() or None,
+                    entries['pan'].get().strip().upper() or None,
+                    entries['address_line1'].get().strip(),
+                    entries['address_line2'].get().strip() or None,
+                    entries['city'].get().strip(),
+                    entries['state'].get().strip(),
+                    entries['pincode'].get().strip(),
+                    entries['country'].get().strip() or 'India',
+                    entries['phone'].get().strip(),
+                    entries['email'].get().strip(),
+                    entries['website'].get().strip() or None,
+                    entries['fy_start'].get().strip() or '04-01'
+                )
+                
+                self.db.save_company_details(details)
+                messagebox.showinfo("Success", "Company details updated successfully!")
+                dialog.destroy()
+                
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to update: {str(e)}")
+        
+        ttk.Button(btn_frame, text="💾 Save Changes", 
+                  command=save_changes).pack(side='right', padx=5)
+        ttk.Button(btn_frame, text="❌ Cancel", 
+                  command=dialog.destroy).pack(side='right', padx=5)
+
 
 if __name__ == "__main__":
     root = tk.Tk()

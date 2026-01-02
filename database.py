@@ -13,7 +13,30 @@ class Database:
     
     def init_tables(self):
         """Initialize all database tables with GST support"""
-        
+        # COMPANY DETAILS TABLE (for company information)
+        # FIXED: Removed CHECK constraint from column definition
+        self.cursor.execute('''
+            CREATE TABLE IF NOT EXISTS Company_Details (
+                id INTEGER PRIMARY KEY,
+                company_name TEXT NOT NULL,
+                legal_name TEXT,
+                gstin TEXT,
+                pan TEXT,
+                address_line1 TEXT,
+                address_line2 TEXT,
+                city TEXT,
+                state TEXT,
+                pincode TEXT,
+                country TEXT DEFAULT 'India',
+                phone TEXT,
+                email TEXT,
+                website TEXT,
+                logo_path TEXT,
+                financial_year_start TEXT,
+                created_date DATE,
+                last_updated DATE
+            )
+        ''')  
         # SHARED TABLES (used by both Purchase and Sales)
         
         # Items table - Now with GST rates
@@ -202,3 +225,43 @@ class Database:
     def close(self):
         """Close database connection"""
         self.conn.close()
+        
+    def company_exists(self):
+        """Check if company details exist"""
+        self.cursor.execute("SELECT COUNT(*) FROM Company_Details WHERE id = 1")
+        return self.cursor.fetchone()[0] > 0
+    
+    def get_company_details(self):
+        """Get company details"""
+        self.cursor.execute("SELECT * FROM Company_Details WHERE id = 1")
+        return self.cursor.fetchone()
+    
+    def save_company_details(self, details):
+        """Save or update company details
+        
+        Args:
+            details: tuple of (company_name, legal_name, gstin, pan, 
+                              address_line1, address_line2, city, state, pincode, country,
+                              phone, email, website, financial_year_start)
+        """
+        if self.company_exists():
+            # Update existing record
+            self.cursor.execute('''
+                UPDATE Company_Details SET
+                    company_name=?, legal_name=?, gstin=?, pan=?,
+                    address_line1=?, address_line2=?, city=?, state=?, pincode=?, country=?,
+                    phone=?, email=?, website=?, financial_year_start=?, last_updated=?
+                WHERE id = 1
+            ''', details + (datetime.now().date(),))
+        else:
+            # Insert new record
+            self.cursor.execute('''
+                INSERT INTO Company_Details (
+                    id, company_name, legal_name, gstin, pan,
+                    address_line1, address_line2, city, state, pincode, country,
+                    phone, email, website, logo_path, financial_year_start, 
+                    created_date, last_updated
+                ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)
+            ''', details + (datetime.now().date(), datetime.now().date()))
+        
+        self.conn.commit()
